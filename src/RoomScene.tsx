@@ -70,9 +70,9 @@ function Hotspot({
   )
 }
 
-const ROOM_MODEL_URL = '/models/gradd-hospital-room.glb'
-const GENERATED_ROOM_MODEL_URL = '/models/hospital-room-generated.glb'
-const PATIENT_MODEL_URL = '/models/patient.glb'
+const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/gradd-hospital-room.glb`
+const GENERATED_ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/hospital-room-generated.glb`
+const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb`
 const PATIENT_REAL_WORLD_SCALE = 1
 const PATIENT_PANEL_WIDTH = 2.68
 const PATIENT_PANEL_SHIFT_X = PATIENT_PANEL_WIDTH * 0.15

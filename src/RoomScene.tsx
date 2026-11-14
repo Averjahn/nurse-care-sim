@@ -1,6 +1,6 @@
 import { OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, type ThreeEvent, useFrame, useThree } from '@react-three/fiber'
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { scenario } from './scenario'
 
@@ -677,23 +677,26 @@ function GeneratedPatientModel() {
   return <primitive object={model} />
 }
 
-function PatientVisual() {
-  const [hasGeneratedModel, setHasGeneratedModel] = useState(false)
+class PatientModelBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false }
 
-  useEffect(() => {
-    let active = true
-    isGlbAvailable(PATIENT_MODEL_URL)
-      .then((available) => {
-        if (active) setHasGeneratedModel(available)
-      })
-      .catch((error: unknown) => {
-        console.error('Ошибка проверки модели пациента:', error)
-      })
-    return () => { active = false }
-  }, [])
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
 
-  if (hasGeneratedModel) return <GeneratedPatientModel />
+  componentDidCatch(error: Error) {
+    console.error('Не удалось загрузить модель пациента. Используется упрощённая модель.', error)
+  }
 
+  render() {
+    return this.state.hasError ? <FallbackPatientModel /> : this.props.children
+  }
+}
+
+function FallbackPatientModel() {
   return (
     <>
       <mesh position={[0, 0.18, -0.05]} rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -716,6 +719,26 @@ function PatientVisual() {
       ))}
     </>
   )
+}
+
+function PatientVisual() {
+  const [hasGeneratedModel, setHasGeneratedModel] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    isGlbAvailable(PATIENT_MODEL_URL)
+      .then((available) => {
+        if (active) setHasGeneratedModel(available)
+      })
+      .catch((error: unknown) => {
+        console.error('Ошибка проверки модели пациента:', error)
+      })
+    return () => { active = false }
+  }, [])
+
+  return hasGeneratedModel
+    ? <PatientModelBoundary><GeneratedPatientModel /></PatientModelBoundary>
+    : <FallbackPatientModel />
 }
 
 function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {

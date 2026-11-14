@@ -1,0 +1,6 @@
+GRADD Hospital Room by GRADD CO [CC-BY] via Poly Pizza
+https://poly.pizza/m/9sUalfQ76kn
+Licensed under Creative Commons Attribution 3.0 (CC BY 3.0):
+https://creativecommons.org/licenses/by/3.0/
+
+The model is included in this project as public/models/gradd-hospital-room.glb.

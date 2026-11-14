@@ -72,7 +72,7 @@ function Hotspot({
 
 const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/gradd-hospital-room.glb`
 const GENERATED_ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/hospital-room-generated.glb`
-const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb`
+const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb?v=2`
 const PATIENT_REAL_WORLD_SCALE = 1
 const PATIENT_PANEL_WIDTH = 2.68
 const PATIENT_PANEL_SHIFT_X = PATIENT_PANEL_WIDTH * 0.15
@@ -80,35 +80,12 @@ const FIRST_PERSON_EYE_HEIGHT = 3.4
 const ACTION_HIGHLIGHT_COLOR = '#ffd54a'
 
 async function isGlbAvailable(url: string) {
-  const response = await fetch(url, { headers: { Range: 'bytes=0-11' } })
+  const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
   if (response.status === 404) return false
   if (!response.ok) throw new Error(`Не удалось проверить 3D-модель ${url} (HTTP ${response.status}).`)
 
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error(`Сервер не вернул тело файла 3D-модели ${url}.`)
-
-  const header = new Uint8Array(12)
-  let bytesRead = 0
-  try {
-    while (bytesRead < header.length) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const bytesToCopy = Math.min(value.length, header.length - bytesRead)
-      header.set(value.subarray(0, bytesToCopy), bytesRead)
-      bytesRead += bytesToCopy
-    }
-  } finally {
-    await reader.cancel()
-    reader.releaseLock()
-  }
-
-  return bytesRead >= header.length
-    && header[0] === 0x67
-    && header[1] === 0x6c
-    && header[2] === 0x54
-    && header[3] === 0x46
-    && new DataView(header.buffer).getUint32(4, true) === 2
-    && new DataView(header.buffer).getUint32(8, true) >= 20
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
+  return contentType === 'model/gltf-binary' || contentType === 'application/octet-stream'
 }
 
 function drawWindowView(canvas: HTMLCanvasElement, now: Date) {

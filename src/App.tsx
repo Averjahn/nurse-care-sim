@@ -11,12 +11,13 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react'
+import PatientChat, { type PatientChatMessage } from './PatientChat'
 import RoomScene, {
   type BlanketTransform,
   type PatientTransform,
   type SceneAction,
 } from './RoomScene'
-import { scenario, sourceReferences, type TaskId } from './scenario'
+import { scenario, sourceReferences, type DialogueOption, type TaskId } from './scenario'
 import './App.css'
 
 const sceneActionsByStep: Partial<Record<string, SceneAction>> = {
@@ -140,6 +141,8 @@ function App() {
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState('')
   const [feedback, setFeedback] = useState('Выполните текущий шаг, чтобы перейти дальше.')
+  const [chatOpen, setChatOpen] = useState(true)
+  const [dialogueResponses, setDialogueResponses] = useState<Partial<Record<TaskId, DialogueOption>>>({})
   const firstPersonRef = useRef(false)
 
   useEffect(() => {
@@ -216,6 +219,26 @@ function App() {
     ? sceneActionsByStep[`${currentStep.task.id}:${currentStep.stepIndex}`] ?? null
     : null
 
+  const currentTaskIndex = currentStep
+    ? scenario.tasks.findIndex((task) => task.id === currentStep.task.id)
+    : scenario.tasks.length - 1
+  const chatMessages = scenario.tasks
+    .slice(0, currentTaskIndex + 1)
+    .flatMap((task, index): PatientChatMessage[] => {
+      const baseId = index * 3
+      const response = dialogueResponses[task.id]
+      const messages: PatientChatMessage[] = [
+        { id: baseId, speaker: 'patient', text: task.patientCue },
+      ]
+      if (response) {
+        messages.push(
+          { id: baseId + 1, speaker: 'nurse', text: response.text },
+          { id: baseId + 2, speaker: 'patient', text: response.patientReply },
+        )
+      }
+      return messages
+    })
+
   const handlePointerLockChange = useCallback((locked: boolean) => {
     setPointerLocked(locked)
     if (locked) setPointerLockFailed(false)
@@ -228,6 +251,7 @@ function App() {
 
   const completeCurrentStep = (message?: string) => {
     if (!currentStep) return
+    if (currentStep.stepIndex === currentStep.task.steps.length - 1) setChatOpen(true)
     setCompletedSteps((current) => {
       if (current[currentStep.task.id][currentStep.stepIndex]) return current
       const next = { ...current, [currentStep.task.id]: [...current[currentStep.task.id]] }
@@ -235,6 +259,11 @@ function App() {
       return next
     })
     setFeedback(message ?? 'Шаг выполнен. Перейдите к следующему действию.')
+  }
+
+  const handleDialogueOption = (option: DialogueOption) => {
+    if (!currentStep || dialogueResponses[currentStep.task.id]) return
+    setDialogueResponses((responses) => ({ ...responses, [currentStep.task.id]: option }))
   }
 
   const rejectOutOfSequenceAction = () => {
@@ -300,6 +329,8 @@ function App() {
     setFirstPerson(false)
     setPointerLocked(false)
     setPointerLockFailed(false)
+    setDialogueResponses({})
+    setChatOpen(true)
     setFeedback('Сценарий начат заново. Выполните текущий шаг.')
   }
 
@@ -384,7 +415,7 @@ function App() {
       )}
 
       <section
-        className={`current-step glass-panel ${targetAction === 'patient' ? 'current-step-left' : ''}`}
+        className={`current-step glass-panel ${chatOpen ? 'current-step-left chat-open-step' : ''}`}
         aria-label="Текущий шаг чек-листа"
         aria-live="polite"
       >
@@ -397,14 +428,13 @@ function App() {
             <div className="current-step-heading">
               <span className="current-step-icon"><Activity size={21} /></span>
               <div>
-                <span className="task-sequence">ЭТАП {currentStep.taskIndex + 1} ИЗ {scenario.tasks.length}</span>
+                <span className="task-sequence">ЭТАП {currentStep.task.stage} ИЗ 5 · {currentStep.task.stageTitle}</span>
                 <h1>{currentStep.task.title}</h1>
               </div>
             </div>
             <p className="current-step-instruction">
               {currentStep.task.steps[currentStep.stepIndex]}
             </p>
-            <p className="current-step-cue">«{currentStep.task.patientCue}»</p>
             {targetAction ? (
               <div className="step-action-prompt">
                 <span className="hint-pulse" />
@@ -443,6 +473,16 @@ function App() {
         </div>
         <div className="safety-hud glass-panel"><ShieldCheck size={15} /><span>Учебная симуляция · Следуйте локальным протоколам</span></div>
       </footer>
+
+      <PatientChat
+        isOpen={chatOpen}
+        patientName={scenario.patient.name}
+        stageTitle={currentStep?.task.stageTitle ?? 'Сценарий завершён'}
+        messages={chatMessages}
+        options={currentStep && !dialogueResponses[currentStep.task.id] ? currentStep.task.dialogueOptions : []}
+        onToggle={() => setChatOpen((isOpen) => !isOpen)}
+        onSelectOption={handleDialogueOption}
+      />
 
       {showNotes && (
         <div className="modal-backdrop" role="presentation" onClick={() => setShowNotes(false)}>

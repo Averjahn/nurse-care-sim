@@ -45,6 +45,28 @@ export function cloneRigMaterials(root: Object3D): Material[] {
   return materials
 }
 
+/** Remove baked yellow/green color and excessive shading from the supplied
+ * scrubs atlas. Retain its fine shading and normal map for seams and folds. */
+export function cleanRigClothing(material: MeshStandardMaterial) {
+  material.color.set('#ffffff')
+  material.metalness = 0
+  material.metalnessMap = null
+  material.roughness = 0.92
+  material.roughnessMap = null
+  material.onBeforeCompile = shader => {
+    shader.uniforms.cleanClothColor = { value: new Color('#80b5cc') }
+    shader.fragmentShader = 'uniform vec3 cleanClothColor;\n' + shader.fragmentShader
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
+      #include <map_fragment>
+      float clothLuminance = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float clothDetail = clamp(pow(max(clothLuminance, 0.0), 0.35) * 1.35, 0.72, 1.18);
+      diffuseColor.rgb = cleanClothColor * clothDetail;
+    `)
+  }
+  material.customProgramCacheKey = () => 'careflow-clean-scrubs-v1'
+  material.needsUpdate = true
+}
+
 export function applyRigMorphs(meshes: Mesh[], targets: Record<string, number>, compression: AnimationClip, compressing: boolean) {
   for (const mesh of meshes) for (const [name, value] of Object.entries(targets)) {
     const index = mesh.morphTargetDictionary![name]

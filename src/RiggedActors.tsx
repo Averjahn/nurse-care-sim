@@ -5,7 +5,7 @@ import { KTX2Loader, type GLTFLoader } from 'three-stdlib'
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js'
 import * as THREE from 'three'
 import { BED_BONES, bedAngles, patientMorphs, patientPose, validatePatientRig, type AnimationClock } from './patientAnimation'
-import { applyRigMorphs, applyRigSkin, bindRigClips, cloneRigMaterials, mergeRigClips, rigInventory } from './rigAssets'
+import { applyRigMorphs, applyRigSkin, bindRigClips, cleanRigClothing, cloneRigMaterials, mergeRigClips, rigInventory } from './rigAssets'
 import { CompressionPlayback, RigPlayback } from './rigPlayback'
 import type { PatientState } from './simulation'
 
@@ -68,6 +68,8 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
         if (node.morphTargetDictionary && node.morphTargetInfluences) morphMeshes.push(node)
         for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
           if (material instanceof THREE.MeshStandardMaterial && /skin|face|lips/i.test(material.name)) skin.push({ material, base: material.color.clone(), roughness: material.roughness })
+          // This material is the clothing primitive split from our supplied GLB.
+          if (material instanceof THREE.MeshStandardMaterial && material.name.startsWith('tripo_material_')) cleanRigClothing(material)
         }
       })
       return { object, materials, clips: clips.filter(c => c.name !== 'compression'), compression: clips.filter(c => c.name === 'compression'), morphMeshes, skin }

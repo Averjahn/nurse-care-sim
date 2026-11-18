@@ -1,18 +1,13 @@
-import { OrbitControls, useGLTF } from '@react-three/drei'
+import { Edges, Html, OrbitControls, useGLTF } from '@react-three/drei'
 import { Canvas, type ThreeEvent, useFrame, useThree } from '@react-three/fiber'
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
-import { scenario } from './scenario'
+import { scenario, objectLabels, type ObjectId } from './scenario'
+import { basePatient, consciousnessLabels, type PatientState } from './simulation'
+import { AnimatedBed, AnimatedPatient } from './RiggedActors'
+import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
-export type SceneAction =
-  | 'sink'
-  | 'patient'
-  | 'blanket'
-  | 'call-bell'
-  | 'bed-controls'
-  | 'mobility'
-  | 'thermostat-up'
-  | 'thermostat-down'
+export type SceneAction = ObjectId
 
 export interface PatientTransform {
   x: number
@@ -29,45 +24,20 @@ export interface BlanketTransform {
 }
 
 interface RoomSceneProps {
+  patientState?: PatientState
+  animationClock?: AnimationClock
+  doctorArrived?: boolean
+  windowOpen?: boolean
   covered: boolean
   firstPerson: boolean
   firstPersonCameraHeight: number
   blanketTransform: BlanketTransform
   patientTransform: PatientTransform
-  roomTemperature: number
   targetAction: SceneAction | null
+  onFocusObject?: (object: ObjectId | null) => void
   onAction: (action: SceneAction) => void
   onPointerLockChange: (locked: boolean) => void
   onPointerLockError: () => void
-}
-
-function Hotspot({
-  position,
-  firstPerson,
-  onClick,
-}: {
-  position: [number, number, number]
-  firstPerson: boolean
-  onClick: () => void
-}) {
-  return (
-    <mesh
-      position={position}
-      scale={firstPerson ? 0.8 : 1.4}
-      onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onClick() }}
-      onPointerOver={() => { document.body.style.cursor = 'pointer' }}
-      onPointerOut={() => { document.body.style.cursor = 'auto' }}
-    >
-      <ringGeometry args={[0.075, 0.15, 32]} />
-      <meshBasicMaterial
-        color={ACTION_HIGHLIGHT_COLOR}
-        side={THREE.DoubleSide}
-        transparent
-        opacity={0.98}
-        toneMapped={false}
-      />
-    </mesh>
-  )
 }
 
 const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/gradd-hospital-room.glb`
@@ -203,7 +173,7 @@ function createWindowTexture(now: Date) {
   return texture
 }
 
-function HospitalWindow() {
+function HospitalWindow({ open = false }: { open?: boolean }) {
   const [texture, setTexture] = useState(() => createWindowTexture(new Date()))
   const currentTexture = useRef(texture)
 
@@ -223,7 +193,7 @@ function HospitalWindow() {
   }, [])
 
   return (
-    <group position={[-3.9, 3.15, -0.35]} rotation={[0, Math.PI / 2, 0]}>
+    <group position={[-3.9, 3.15, -0.35]} rotation={[0, Math.PI / 2 + (open ? 0.35 : 0), 0]}>
       <mesh position={[0, 0, -0.025]}>
         <boxGeometry args={[2.2, 1.56, 0.12]} />
         <meshStandardMaterial color="#e5ebe8" roughness={0.72} />
@@ -252,7 +222,8 @@ function HospitalWindow() {
   )
 }
 
-function PatientWallPanel({ onAction, targetAction }: Pick<RoomSceneProps, 'onAction' | 'targetAction'>) {
+function PatientWallPanel({ onAction, targetAction, patientState }: Pick<RoomSceneProps, 'onAction' | 'targetAction' | 'patientState'>) {
+  const consciousness = patientState?.consciousness
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas')
     canvas.width = 900
@@ -272,8 +243,8 @@ function PatientWallPanel({ onAction, targetAction }: Pick<RoomSceneProps, 'onAc
     context.fillText(`${scenario.patient.name} · ${scenario.patient.age} лет`, 36, 145)
     context.fillStyle = '#718681'
     context.font = '500 27px "DM Sans", sans-serif'
-    context.fillText('Восстановление после пневмонии', 36, 187)
-    context.fillText('Слабость · передвижение с поддержкой', 36, 222)
+    context.fillText(consciousness ? 'Экстренный эпизод · требуется оценка' : 'Готовность к учебному эпизоду', 36, 187)
+    context.fillText(consciousness ? `Сознание: ${consciousnessLabels[consciousness]}` : 'Мария Андреевна · учебные данные', 36, 222)
     context.fillStyle = '#e9f2ef'
     context.beginPath()
     context.roundRect(32, 258, 836, 124, 16)
@@ -293,12 +264,12 @@ function PatientWallPanel({ onAction, targetAction }: Pick<RoomSceneProps, 'onAc
     })
     context.fillStyle = '#63877f'
     context.font = '600 20px "DM Sans", sans-serif'
-    context.fillText('ПОСЛЕДНИЕ ПОКАЗАТЕЛИ · 08:00 · УЧЕБНЫЕ ДАННЫЕ', 36, 432)
+    context.fillText('ИСХОДНЫЕ ПОКАЗАТЕЛИ · ТЕКУЩИЕ НУЖНО ИЗМЕРИТЬ', 36, 432)
 
     const map = new THREE.CanvasTexture(canvas)
     map.colorSpace = THREE.SRGBColorSpace
     return map
-  }, [])
+  }, [consciousness])
 
   useEffect(() => () => texture.dispose(), [texture])
 
@@ -307,194 +278,19 @@ function PatientWallPanel({ onAction, targetAction }: Pick<RoomSceneProps, 'onAc
       <mesh position={[0, 0, -0.035]}>
         <boxGeometry args={[PATIENT_PANEL_WIDTH, 1.52, 0.07]} />
         <meshStandardMaterial
-          color={targetAction === 'patient' ? ACTION_HIGHLIGHT_COLOR : '#45615c'}
-          emissive={targetAction === 'patient' ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={targetAction === 'patient' ? 0.7 : 0}
+          color={targetAction === 'chart' ? ACTION_HIGHLIGHT_COLOR : '#45615c'}
+          emissive={targetAction === 'chart' ? ACTION_HIGHLIGHT_COLOR : '#000000'}
+          emissiveIntensity={targetAction === 'chart' ? 0.7 : 0}
           roughness={0.45}
         />
       </mesh>
       <mesh position={[0, 0, 0.015]}
-        onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onAction('patient') }}
+        onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction('chart') }}
         onPointerOver={() => { document.body.style.cursor = 'pointer' }}
         onPointerOut={() => { document.body.style.cursor = 'auto' }}
       >
         <planeGeometry args={[2.58, 1.43]} />
         <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-    </group>
-  )
-}
-
-function HandwashingSink({
-  targetAction,
-  onAction,
-}: Pick<RoomSceneProps, 'targetAction' | 'onAction'>) {
-  const highlighted = targetAction === 'sink'
-  const porcelain = highlighted ? ACTION_HIGHLIGHT_COLOR : '#f5f8f6'
-  const basinMaterial = (
-    <meshStandardMaterial
-      color={porcelain}
-      emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-      emissiveIntensity={highlighted ? 0.48 : 0}
-      roughness={0.28}
-      metalness={0.04}
-    />
-  )
-
-  const handleClick = (event: ThreeEvent<MouseEvent>) => {
-    event.stopPropagation()
-    onAction('sink')
-  }
-
-  return (
-    <group
-      position={[-3.72, 0.45, -1.72]}
-      rotation={[0, Math.PI / 2, 0]}
-      onClick={handleClick}
-      onPointerOver={() => { document.body.style.cursor = 'pointer' }}
-      onPointerOut={() => { document.body.style.cursor = 'auto' }}
-    >
-      <mesh position={[0, 0.43, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.84, 0.86, 0.4]} />
-        <meshStandardMaterial
-          color={highlighted ? '#ffe27a' : '#dce8e4'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.32 : 0}
-          roughness={0.68}
-        />
-      </mesh>
-      <mesh position={[0, 0.9, 0.015]} castShadow receiveShadow>
-        <boxGeometry args={[1.02, 0.12, 0.5]} />
-        {basinMaterial}
-      </mesh>
-      <mesh position={[0, 0.974, 0.055]} castShadow receiveShadow>
-        <boxGeometry args={[0.72, 0.035, 0.31]} />
-        <meshStandardMaterial
-          color={highlighted ? '#fff0a8' : '#d9e8e7'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.38 : 0}
-          roughness={0.24}
-        />
-      </mesh>
-      <mesh position={[0, 0.994, 0.055]}>
-        <boxGeometry args={[0.38, 0.012, 0.16]} />
-        <meshStandardMaterial color="#a9c5c6" roughness={0.2} metalness={0.14} />
-      </mesh>
-      <mesh position={[0, 1.035, -0.15]} castShadow>
-        <cylinderGeometry args={[0.025, 0.025, 0.1, 16]} />
-        <meshStandardMaterial color="#b4c3c0" metalness={0.72} roughness={0.24} />
-      </mesh>
-      <mesh position={[0, 1.085, -0.105]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.05, 0.018, 8, 18, Math.PI]} />
-        <meshStandardMaterial color="#b4c3c0" metalness={0.72} roughness={0.24} />
-      </mesh>
-      <mesh position={[0.3, 1.035, -0.15]}>
-        <cylinderGeometry args={[0.035, 0.035, 0.07, 16]} />
-        <meshStandardMaterial color="#9abbb5" roughness={0.35} />
-      </mesh>
-      <mesh position={[-0.3, 1.035, -0.15]}>
-        <cylinderGeometry args={[0.035, 0.035, 0.07, 16]} />
-        <meshStandardMaterial color="#9abbb5" roughness={0.35} />
-      </mesh>
-      <mesh position={[0.37, 1.36, -0.2]} castShadow>
-        <boxGeometry args={[0.2, 0.28, 0.12]} />
-        <meshStandardMaterial
-          color={highlighted ? ACTION_HIGHLIGHT_COLOR : '#edf4f1'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.38 : 0}
-          roughness={0.52}
-        />
-      </mesh>
-      <mesh position={[0.37, 1.37, -0.13]}>
-        <boxGeometry args={[0.08, 0.11, 0.018]} />
-        <meshStandardMaterial color="#9bc9bb" roughness={0.5} />
-      </mesh>
-    </group>
-  )
-}
-
-function Thermostat({
-  roomTemperature,
-  targetAction,
-  onAction,
-}: Pick<RoomSceneProps, 'roomTemperature' | 'targetAction' | 'onAction'>) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 360
-    canvas.height = 200
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Не удалось создать графический контекст термостата.')
-    context.fillStyle = '#edf5f2'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.fillStyle = '#628078'
-    context.font = '600 25px "DM Sans", sans-serif'
-    context.textAlign = 'center'
-    context.fillText('ТЕМПЕРАТУРА', canvas.width / 2, 48)
-    context.fillStyle = '#244c45'
-    context.font = '700 76px "DM Sans", sans-serif'
-    context.fillText(`${roomTemperature}°`, canvas.width / 2, 132)
-    context.fillStyle = '#82948e'
-    context.font = '500 22px "DM Sans", sans-serif'
-    context.fillText('уставка палаты', canvas.width / 2, 172)
-    const map = new THREE.CanvasTexture(canvas)
-    map.colorSpace = THREE.SRGBColorSpace
-    return map
-  }, [roomTemperature])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  const handleAction = (event: ThreeEvent<MouseEvent>, action: SceneAction) => {
-    event.stopPropagation()
-    onAction(action)
-  }
-  const buttonMaterial = (action: SceneAction) => (
-    <meshStandardMaterial
-      color={targetAction === action ? ACTION_HIGHLIGHT_COLOR : '#dcebe5'}
-      emissive={targetAction === action ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-      emissiveIntensity={targetAction === action ? 0.85 : 0}
-      roughness={0.65}
-    />
-  )
-
-  return (
-    <group position={[-3.2, 1.85, -3.72]}>
-      <mesh position={[0, 0, -0.035]}>
-        <boxGeometry args={[0.78, 0.76, 0.08]} />
-        <meshStandardMaterial color="#f8fbf9" roughness={0.5} />
-      </mesh>
-      <mesh position={[0, 0.11, 0.018]}>
-        <planeGeometry args={[0.62, 0.34]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-      <mesh
-        position={[-0.19, -0.22, 0.035]}
-        onClick={(event: ThreeEvent<MouseEvent>) => handleAction(event, 'thermostat-down')}
-        onPointerOver={() => { document.body.style.cursor = 'pointer' }}
-        onPointerOut={() => { document.body.style.cursor = 'auto' }}
-      >
-        <boxGeometry args={[0.2, 0.16, 0.04]} />
-        {buttonMaterial('thermostat-down')}
-      </mesh>
-      <mesh position={[-0.19, -0.22, 0.06]} raycast={() => {}}>
-        <boxGeometry args={[0.08, 0.018, 0.012]} />
-        <meshBasicMaterial color="#52786e" />
-      </mesh>
-      <mesh
-        position={[0.19, -0.22, 0.035]}
-        onClick={(event: ThreeEvent<MouseEvent>) => handleAction(event, 'thermostat-up')}
-        onPointerOver={() => { document.body.style.cursor = 'pointer' }}
-        onPointerOut={() => { document.body.style.cursor = 'auto' }}
-      >
-        <boxGeometry args={[0.2, 0.16, 0.04]} />
-        {buttonMaterial('thermostat-up')}
-      </mesh>
-      <mesh position={[0.19, -0.22, 0.06]} raycast={() => {}}>
-        <boxGeometry args={[0.08, 0.018, 0.012]} />
-        <meshBasicMaterial color="#52786e" />
-      </mesh>
-      <mesh position={[0.19, -0.22, 0.075]} raycast={() => {}}>
-        <boxGeometry args={[0.018, 0.08, 0.012]} />
-        <meshBasicMaterial color="#52786e" />
       </mesh>
     </group>
   )
@@ -509,6 +305,7 @@ function FirstPersonNavigation({
   const cameraRef = useRef(sceneCamera)
   const pressedKeys = useRef(new Set<string>())
   const dragging = useRef(false)
+  const sprinting = useRef(false)
 
   useEffect(() => {
     const canvas = gl.domElement
@@ -524,12 +321,16 @@ function FirstPersonNavigation({
       const isEditing = activeElement instanceof HTMLElement
         && (activeElement.isContentEditable || activeElement.matches('input, textarea, select, button'))
       if (document.pointerLockElement !== canvas && isEditing) return
+      sprinting.current = event.shiftKey
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright'].includes(key)) {
         event.preventDefault()
         keys.add(key)
       }
     }
-    const handleKeyUp = (event: KeyboardEvent) => keys.delete(event.key.toLowerCase())
+    const handleKeyUp = (event: KeyboardEvent) => {
+      keys.delete(event.key.toLowerCase())
+      sprinting.current = event.shiftKey
+    }
     const handlePointerMove = (event: MouseEvent) => {
       if (document.pointerLockElement !== canvas && !dragging.current) return
       camera.rotation.y -= event.movementX * 0.002
@@ -541,15 +342,19 @@ function FirstPersonNavigation({
     }
     const handleLockChange = () => {
       const locked = document.pointerLockElement === canvas
-      if (!locked) keys.clear()
+      if (!locked) { keys.clear(); sprinting.current = false }
       onPointerLockChange(locked)
     }
     const handleLockError = () => onPointerLockError()
-    const handleCanvasClick = () => {
+    const handleCanvasClick = (event: MouseEvent) => {
+      if (event.defaultPrevented) return
       canvas.focus({ preventScroll: true })
       if (document.pointerLockElement === canvas) return
-      const result = canvas.requestPointerLock()
-      if (result instanceof Promise) void result.catch(handleLockError)
+      try {
+        const result = canvas.requestPointerLock?.()
+        if (result instanceof Promise) void result.catch(handleLockError)
+        if (!canvas.requestPointerLock) handleLockError()
+      } catch { handleLockError() }
     }
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || document.pointerLockElement === canvas) return
@@ -560,7 +365,7 @@ function FirstPersonNavigation({
       dragging.current = false
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
     }
-    const handleBlur = () => keys.clear()
+    const handleBlur = () => { keys.clear(); sprinting.current = false }
 
     canvas.addEventListener('click', handleCanvasClick)
     canvas.addEventListener('pointerdown', handlePointerDown)
@@ -585,6 +390,7 @@ function FirstPersonNavigation({
       if (document.pointerLockElement === canvas) document.exitPointerLock()
       keys.clear()
       dragging.current = false
+      sprinting.current = false
       camera.position.set(7.2, 6.8, 8.5)
       camera.rotation.order = 'XYZ'
       camera.lookAt(0, 1.2, 0)
@@ -609,7 +415,7 @@ function FirstPersonNavigation({
     forward.normalize()
     const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize()
     const movement = forward.multiplyScalar(forwardInput).addScaledVector(right, rightInput).normalize()
-    const distance = Math.min(delta, 0.05) * 2.2
+    const distance = Math.min(delta, 0.05) * 2.2 * (sprinting.current ? 2 : 1)
     const nextX = THREE.MathUtils.clamp(camera.position.x + movement.x * distance, -3.7, 3.7)
     const nextZ = THREE.MathUtils.clamp(camera.position.z + movement.z * distance, -3.65, 3.7)
 
@@ -852,13 +658,20 @@ function HospitalRoomAsset({
   firstPerson,
   blanketTransform,
   patientTransform,
-  roomTemperature,
   targetAction,
   onAction,
+  onFocusObject,
+  patientState,
+  animationClock = DEFAULT_ANIMATION_CLOCK,
+  doctorArrived,
+  windowOpen,
   modelUrl,
 }: HospitalRoomModelProps & { modelUrl: string }) {
   const { scene } = useGLTF(modelUrl)
   const patientScale = patientTransform.scale * PATIENT_REAL_WORLD_SCALE
+  const [bedReady, setBedReady] = useState(false)
+  const onBedReady = useCallback((ready: boolean) => setBedReady(ready), [])
+  const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
   const { model, scale, offset } = useMemo(() => {
     const model = scene.clone(true)
     model.updateMatrixWorld(true)
@@ -866,12 +679,13 @@ function HospitalRoomAsset({
     const size = bounds.getSize(new THREE.Vector3())
     const center = bounds.getCenter(new THREE.Vector3())
     const scale = 8.5 / Math.max(size.x, size.z)
+    if (bedReady) model.traverse(object => { if (object.name.includes('Hospital_Bed')) object.visible = false })
     return {
     model,
     scale,
     offset: new THREE.Vector3(-center.x * scale, -bounds.min.y * scale, -center.z * scale),
     }
-  }, [scene])
+  }, [scene, bedReady])
 
   return (
     <>
@@ -879,7 +693,7 @@ function HospitalRoomAsset({
       <primitive object={model} />
     </group>
 
-    <HospitalWindow />
+    <HospitalWindow open={windowOpen} />
 
     <group
       position={[
@@ -889,7 +703,7 @@ function HospitalRoomAsset({
       ]}
       scale={patientScale}
     >
-      <PatientVisual />
+      <AnimatedPatient patient={patientState ?? basePatient} clock={animationClock} fallback={patientState ? <ArticulatedPatient patient={patientState} clock={animationClock} showSupports={!bedReady}/> : <PatientVisual/>}/>
     </group>
     <group
       position={[
@@ -900,22 +714,24 @@ function HospitalRoomAsset({
     >
       {(covered || targetAction === 'blanket') && (
         <group
-          position={[blanketTransform.x, blanketTransform.y, blanketTransform.z]}
+          position={[blanketTransform.x, blanketTransform.y, blanketTransform.z + (blanketOff ? 0.9 : 0)]}
           scale={patientScale * blanketTransform.scale}
         >
-          <BlanketVisual highlighted={targetAction === 'blanket' && !covered} />
+          <group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={targetAction === 'blanket' && !covered} /></group>
         </group>
       )}
     </group>
 
-    <PatientWallPanel onAction={onAction} targetAction={targetAction} />
-    <HandwashingSink onAction={onAction} targetAction={targetAction} />
-    <Thermostat roomTemperature={roomTemperature} targetAction={targetAction} onAction={onAction} />
-
-    {targetAction === 'blanket' && <Hotspot position={[-1.25, 1.85, -0.15]} firstPerson={firstPerson} onClick={() => onAction('blanket')} />}
-    {targetAction === 'call-bell' && <Hotspot position={[1.4, 1.55, -1.1]} firstPerson={firstPerson} onClick={() => onAction('call-bell')} />}
-    {targetAction === 'bed-controls' && <Hotspot position={[0.9, 1.45, -1.2]} firstPerson={firstPerson} onClick={() => onAction('bed-controls')} />}
-    {targetAction === 'mobility' && <Hotspot position={[-0.1, 1.8, 0.25]} firstPerson={firstPerson} onClick={() => onAction('mobility')} />}
+    <AnimatedBed patient={patientState} clock={animationClock} onReady={onBedReady}/>
+    <WallStorageShelf />
+    <PatientWallPanel onAction={onAction} targetAction={targetAction} patientState={patientState} />
+    <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
+    {doctorArrived && <group position={[2.9, 0, 1.5]}>
+      <mesh position={[0, 1.1, 0]}><capsuleGeometry args={[0.24, 0.65, 6, 12]}/><meshStandardMaterial color="#f6fcfa"/></mesh>
+      <mesh position={[0, 1.75, 0]}><sphereGeometry args={[0.18, 16, 12]}/><meshStandardMaterial color="#dcb297"/></mesh>
+      {[-0.13, 0.13].map(x => <mesh key={x} position={[x, 0.43, 0]}><capsuleGeometry args={[0.08, 0.65, 4, 8]}/><meshStandardMaterial color="#537c7a"/></mesh>)}
+      <Html position={[0, 2.1, 0]} center style={{ pointerEvents: 'none' }}><span className="scene-label">Врач в палате</span></Html>
+    </group>}
     </>
   )
 }
@@ -926,11 +742,15 @@ function Room({
   firstPersonCameraHeight,
   blanketTransform,
   patientTransform,
-  roomTemperature,
   targetAction,
   onAction,
   onPointerLockChange,
   onPointerLockError,
+  onFocusObject,
+  patientState,
+  animationClock = DEFAULT_ANIMATION_CLOCK,
+  doctorArrived,
+  windowOpen,
 }: RoomSceneProps) {
   return (
     <>
@@ -940,13 +760,17 @@ function Room({
     <directionalLight position={[4, 8, 3]} intensity={1.4} />
     <Suspense fallback={null}>
       <HospitalRoomModel
+        patientState={patientState}
+        animationClock={animationClock}
+        doctorArrived={doctorArrived}
+        windowOpen={windowOpen}
         covered={covered}
         firstPerson={firstPerson}
         blanketTransform={blanketTransform}
         patientTransform={patientTransform}
-        roomTemperature={roomTemperature}
         targetAction={targetAction}
         onAction={onAction}
+        onFocusObject={onFocusObject}
       />
     </Suspense>
     {firstPerson ? (
@@ -986,4 +810,199 @@ export default function RoomScene(props: RoomSceneProps) {
       <Room {...props} />
     </Canvas>
   )
+}
+
+// The supplied patient GLB is a single unrigged mesh. A segmented teaching model
+// supplies the four articulated positions without pretending the GLB has clips.
+function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: PatientState; clock: AnimationClock; showSupports?: boolean }) {
+  const torso = useRef<THREE.Group>(null)
+  const legs = useRef<THREE.Group>(null)
+  const breath = useRef<THREE.Mesh>(null)
+  const body = useRef<THREE.Group>(null)
+  const visualTime = useRef(patient.secondsSinceOnset)
+  const compressionAge = useRef(Infinity)
+  const lastCompression = useRef(clock.compressions)
+  const pose = patientPose(patient)
+  const skin = ({ normal: '#dcb296', pale: '#d1c6b6', flushed: '#db927f', coldSweat: '#c4c8bc', rash: '#dfa18e' })[patient.skin]
+  useFrame((_, realDelta) => {
+    if (clock.paused) return
+    const delta = realDelta * clock.speed
+    visualTime.current += delta
+    if (clock.compressions > lastCompression.current) compressionAge.current = 0
+    lastCompression.current = clock.compressions
+    compressionAge.current += realDelta
+    const angle = pose === 'semifowler' ? 0.65 : pose === 'sitting_edge' ? 1.2 : 0
+    if (torso.current) torso.current.rotation.x = THREE.MathUtils.damp(torso.current.rotation.x, angle, 5, delta)
+    const legAngle = pose === 'legs_elevated' ? -0.3 : pose === 'sitting_edge' ? 0.8 : 0
+    if (legs.current) legs.current.rotation.x = THREE.MathUtils.damp(legs.current.rotation.x, legAngle, 5, delta)
+    if (body.current) body.current.rotation.y = THREE.MathUtils.damp(body.current.rotation.y, pose === 'sitting_edge' ? Math.PI / 2 : 0, 5, delta)
+    if (breath.current) {
+      const compressionPulse = compressionAge.current < 0.3 ? Math.sin(compressionAge.current / 0.3 * Math.PI) * 0.08 : 0
+      breath.current.scale.y = 1 + (patient.breathing ? Math.sin(visualTime.current * 2.8) * 0.035 : 0) - compressionPulse
+    }
+  })
+  return <group ref={body} userData={{ patientRenderer: 'fallback' }}>
+    <group ref={torso} position={[0, 0.15, 0]}>
+      <mesh ref={breath} position={[0, 0.09, -0.3]}><boxGeometry args={[0.45, 0.22, 0.65]}/><meshStandardMaterial color="#b7d9dc" roughness={0.85}/></mesh>
+      <mesh position={[0, 0.13, -0.86]} scale={[0.8, 0.85, 1]}><sphereGeometry args={[0.2, 24, 16]}/><meshStandardMaterial color={skin}/></mesh>
+      <mesh position={[0, 0.13, -0.96]} scale={[0.85, 0.8, 0.65]}><sphereGeometry args={[0.2, 18, 12]}/><meshStandardMaterial color="#62534f"/></mesh>
+      {[-0.075, 0.075].map(x => <mesh key={x} position={[x, 0.297, -0.81]} rotation={[-Math.PI / 2, 0, 0]}><boxGeometry args={[0.046, patient.consciousness === 'lost' ? 0.008 : 0.024, 0.008]}/><meshStandardMaterial color="#4b514e"/></mesh>)}
+      {[-0.3, 0.3].map(x => <mesh key={x} position={[x, 0.06, -0.28]} rotation={[Math.PI / 2, 0, x < 0 ? -0.08 : 0.08]}><capsuleGeometry args={[0.065, 0.55, 6, 12]}/><meshStandardMaterial color={skin}/></mesh>)}
+      {patient.skin === 'rash' && [-0.12, 0, 0.1].map((x, i) => <mesh key={x} position={[x, 0.213, -0.58 + i * 0.04]}><sphereGeometry args={[0.025, 8, 6]}/><meshStandardMaterial color="#bc5b59"/></mesh>)}
+      {showSupports && <mesh position={[0, -0.07, -0.3]}><boxGeometry args={[0.53, 0.1, 0.8]}/><meshStandardMaterial color="#e3eeeb"/></mesh>}
+    </group>
+    <group ref={legs} position={[0, 0.15, 0]}>
+      {[-0.13, 0.13].map(x => <mesh key={x} position={[x, 0.02, 0.43]} rotation={[Math.PI / 2, 0, 0]}><capsuleGeometry args={[0.09, 0.68, 6, 12]}/><meshStandardMaterial color="#a4c6cb"/></mesh>)}
+      {showSupports && <mesh position={[0, -0.07, 0.4]}><boxGeometry args={[0.53, 0.1, 0.83]}/><meshStandardMaterial color="#e3eeeb"/></mesh>}
+    </group>
+  </group>
+}
+
+// Shelf heights are the upper surfaces; item origins include their geometry's
+// bottom offset so that moving a shelf never leaves its contents suspended.
+const SHELF_X = 2.5 + PATIENT_PANEL_SHIFT_X
+const SHELF_Z = -3.62
+const SHELF_TOP = 1.8
+const SHELF_LOWER = 1.0
+function WallStorageShelf() {
+  return <group name="wall-storage-shelf" position={[SHELF_X, 0, SHELF_Z]}>
+    {[SHELF_TOP, SHELF_LOWER].map(height => <group key={height}>
+      <mesh position={[0, height - 0.04, 0]} castShadow receiveShadow>
+        <boxGeometry args={[2.64, 0.08, 0.66]}/>
+        <meshStandardMaterial color="#e4eeea" roughness={0.7}/>
+      </mesh>
+      <mesh position={[0, height + 0.025, -0.315]}>
+        <boxGeometry args={[2.64, 0.05, 0.03]}/>
+        <meshStandardMaterial color="#bdcfca" roughness={0.6}/>
+      </mesh>
+      {[-1.03, 1.03].map(x => <group key={x}>
+        <mesh position={[x, height - 0.23, -0.3]}>
+          <boxGeometry args={[0.055, 0.38, 0.045]}/>
+          <meshStandardMaterial color="#809f98" metalness={0.3} roughness={0.5}/>
+        </mesh>
+        <mesh position={[x, height - 0.08, -0.06]}>
+          <boxGeometry args={[0.055, 0.045, 0.48]}/>
+          <meshStandardMaterial color="#809f98" metalness={0.3} roughness={0.5}/>
+        </mesh>
+      </group>)}
+    </group>)}
+  </group>
+}
+interface SceneObjectPlacement {
+  id: ObjectId
+  position: [number, number, number]
+  rotation?: [number, number, number]
+  hitbox?: [number, number, number]
+  color: string
+}
+const sceneObjects: SceneObjectPlacement[] = [
+  { id: 'patient', position: [-0.35, 2, -2.25], hitbox: [0.48, 0.18, 0.6], color: '#6e9f95' },
+  // The original GLB's right rails are at x=0.783–0.832, y=0.905–1.694.
+  { id: 'bed-controls', position: [0.88, 1.23, -1.12], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
+  { id: 'call-bell', position: [0.88, 1.54, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
+  { id: 'monitor', position: [2.5, SHELF_TOP + 0.09, SHELF_Z], color: '#4b918d' },
+  { id: 'chart', position: [SHELF_X, 3, -3.86], hitbox: [2.58, 1.43, 0.12], color: '#809c83' },
+  { id: 'medications', position: [1.98, SHELF_TOP + 0.075, SHELF_Z], color: '#b57e60' },
+  { id: 'oxygen', position: [1.9, SHELF_LOWER + 0.475, SHELF_Z], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
+  { id: 'window', position: [-3.77, 3.15, -0.35], rotation: [0, Math.PI / 2, 0], hitbox: [1.92, 1.26, 0.15], color: '#82abb8' },
+  { id: 'blanket', position: [2.48, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
+  { id: 'heater', position: [3.48, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
+  { id: 'sink', position: [-2.8, 1.8, 1.7], color: '#a3beb9' },
+  { id: 'injection', position: [3.89, SHELF_TOP + 0.06, SHELF_Z], rotation: [0, 0, Math.PI / 2], hitbox: [0.15, 0.5, 0.15], color: '#719dac' },
+  { id: 'linen', position: [3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
+  { id: 'equipment', position: [3.03, SHELF_TOP + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
+  { id: 'cpr', position: [-0.3, 1.9, -2.3], hitbox: [0.48, 0.18, 0.6], color: '#c75b56' },
+]
+function EmergencyObject({ object, highlighted, onAction }: { object: typeof sceneObjects[number]; highlighted: boolean; onAction: RoomSceneProps['onAction'] }) {
+  const [hovered, setHovered] = useState(false)
+  const color = hovered || highlighted ? ACTION_HIGHLIGHT_COLOR : object.color
+  const hitbox = object.hitbox ?? [0.36, 0.4, 0.25]
+  return <group position={object.position} rotation={object.rotation} userData={{ emergencyObject: object.id }}>
+    <mesh onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(object.id) }} onPointerOver={() => { setHovered(true); document.body.style.cursor = 'pointer' }} onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
+      <boxGeometry args={hitbox}/>
+      <meshBasicMaterial color={color} transparent opacity={hovered || highlighted ? 0.1 : 0} depthWrite={false}/>
+      {(hovered || highlighted) && <Edges color={ACTION_HIGHLIGHT_COLOR} raycast={() => {}}/>}
+    </mesh>
+    <mesh visible={false} userData={{ centerOutline: true }} raycast={() => {}}>
+      <boxGeometry args={[hitbox[0] + 0.02, hitbox[1] + 0.02, hitbox[2] + 0.02]}/><meshBasicMaterial visible={false}/><Edges color={ACTION_HIGHLIGHT_COLOR} raycast={() => {}}/>
+    </mesh>
+    <ObjectVisual id={object.id} color={object.color}/>
+    {(hovered || highlighted) && <Html position={[0, 0.25, 0]} center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}><span className="scene-label">{objectLabels[object.id]}</span></Html>}
+  </group>
+}
+function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, patientState }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
+  return <>
+    {sceneObjects.filter(o => o.id === 'cpr' ? patientState?.breathing === false : o.id !== 'patient' || patientState?.breathing !== false).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
+  </>
+}
+function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'onAction' | 'onFocusObject'>) {
+  const { camera, scene, gl } = useThree()
+  const target = useRef<ObjectId | null>(null)
+  const outlined = useRef<THREE.Mesh | null>(null)
+  const rayRef = useRef(new THREE.Raycaster())
+  useFrame(() => {
+    const ray = rayRef.current
+    ray.setFromCamera(new THREE.Vector2(0, 0), camera)
+    ray.far = Infinity
+    const hit = ray.intersectObjects(scene.children, true).find(hit => hit.object.visible && hit.object instanceof THREE.Mesh)
+    let object: THREE.Object3D | null = hit?.object ?? null
+    const previousTarget = target.current
+    target.current = null
+    while (object) {
+      if (object.userData.emergencyObject) { target.current = object.userData.emergencyObject as ObjectId; break }
+      object = object.parent
+    }
+    if (outlined.current) outlined.current.visible = false
+    outlined.current = null
+    if (object && target.current) {
+      const outline = object.children.find(child => child.userData.centerOutline) as THREE.Mesh | undefined
+      if (outline) { outline.visible = true; outlined.current = outline }
+    }
+    if (previousTarget !== target.current) onFocusObject?.(target.current)
+  })
+  useEffect(() => {
+    const interact = () => { if (target.current) onAction(target.current) }
+    const key = (e: KeyboardEvent) => { if (e.code === 'KeyE' && !e.repeat && document.pointerLockElement === gl.domElement) { e.preventDefault(); interact() } }
+    const click = (e: MouseEvent) => { if (document.pointerLockElement === gl.domElement && target.current) { e.preventDefault(); interact() } }
+    window.addEventListener('keydown', key); gl.domElement.addEventListener('click', click)
+    return () => { window.removeEventListener('keydown', key); gl.domElement.removeEventListener('click', click) }
+  }, [gl, onAction])
+  return null
+}
+
+function ObjectVisual({ id, color }: { id: ObjectId; color: string }) {
+  if (['patient', 'cpr', 'window', 'chart', 'sink'].includes(id)) return null
+  if (id === 'call-bell' || id === 'bed-controls') return <group>
+    <mesh position={[0, 0, -0.065]}><boxGeometry args={[0.17, 0.19, 0.08]}/><meshStandardMaterial color="#8da7a0" metalness={0.25}/></mesh>
+    <mesh><boxGeometry args={id === 'bed-controls' ? [0.24, 0.15, 0.06] : [0.16, 0.26, 0.06]}/><meshStandardMaterial color="#f0f5ef"/></mesh>
+    {id === 'call-bell' ? <>
+      <mesh position={[0, 0.035, 0.04]}><sphereGeometry args={[0.048, 16, 12]}/><meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.25}/></mesh>
+      <mesh position={[0, -0.065, 0.035]}><boxGeometry args={[0.055, 0.015, 0.012]}/><meshStandardMaterial color="#9e5b52"/></mesh>
+    </> : <>
+      {[-0.062, 0.062].map(x => <mesh key={x} position={[x, 0, 0.038]}><boxGeometry args={[0.06, 0.065, 0.016]}/><meshStandardMaterial color={color}/></mesh>)}
+      {[-0.062, 0.062].map(x => <mesh key={x} position={[x, 0, 0.048]} rotation={[0, 0, x < 0 ? 0 : Math.PI]}><coneGeometry args={[0.018, 0.025, 3]}/><meshStandardMaterial color="#f4f8f4"/></mesh>)}
+    </>}
+  </group>
+  if (id === 'medications') return <group>
+    <mesh><boxGeometry args={[0.34, 0.15, 0.24]}/><meshStandardMaterial color="#fafbf7"/></mesh>
+    <mesh position={[0, 0.08, 0]}><boxGeometry args={[0.15, 0.008, 0.045]}/><meshStandardMaterial color="#b86c5f"/></mesh>
+    <mesh position={[0, 0.08, 0]}><boxGeometry args={[0.045, 0.008, 0.15]}/><meshStandardMaterial color="#b86c5f"/></mesh>
+  </group>
+  if (id === 'oxygen') return <group>
+    <mesh position={[0, -0.2, 0]}><cylinderGeometry args={[0.1, 0.1, 0.55, 16]}/><meshStandardMaterial color="#d6e9e5" metalness={0.2}/></mesh>
+    <mesh position={[0, 0.12, 0]}><cylinderGeometry args={[0.035, 0.035, 0.1, 10]}/><meshStandardMaterial color="#648d85"/></mesh>
+    <mesh position={[0.075, 0.16, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.04, 0.04, 0.025, 12]}/><meshStandardMaterial color="#edf3ea"/></mesh>
+  </group>
+  if (id === 'monitor') return <group>
+    <mesh><boxGeometry args={[0.3, 0.18, 0.2]}/><meshStandardMaterial color="#eff5ee"/></mesh>
+    <mesh position={[0, 0.04, 0.105]}><planeGeometry args={[0.21, 0.07]}/><meshBasicMaterial color="#6faaa0"/></mesh>
+  </group>
+  if (id === 'heater') return <group><mesh scale={[1, 1.3, 0.4]}><boxGeometry args={[0.2, 0.24, 0.12]}/><meshStandardMaterial color="#b87862" roughness={0.9}/></mesh><mesh position={[0, 0.2, 0]}><cylinderGeometry args={[0.025, 0.025, 0.08, 10]}/><meshStandardMaterial color="#e3d9c0"/></mesh></group>
+  if (id === 'blanket' || id === 'linen') return <group>{[0, 0.05, 0.1].map(y => <mesh key={y} position={[0, y, 0]}><boxGeometry args={[0.35, 0.045, 0.28]}/><meshStandardMaterial color={id === 'blanket' ? '#a9c8c0' : '#edf0e6'} roughness={1}/></mesh>)}</group>
+  if (id === 'injection') return <group>
+    <mesh><cylinderGeometry args={[0.06, 0.06, 0.25, 12]}/><meshStandardMaterial color="#dcecea" transparent opacity={0.7}/></mesh>
+    <mesh position={[0, -0.22, 0]}><cylinderGeometry args={[0.01, 0.01, 0.2, 8]}/><meshStandardMaterial color="#8bb5ad"/></mesh>
+  </group>
+  return <group><mesh><boxGeometry args={[0.35, 0.035, 0.22]}/><meshStandardMaterial color="#c9d5ce" metalness={0.5}/></mesh>{[-0.1, 0, 0.1].map(x => <mesh key={x} position={[x, 0.035, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.01, 0.01, 0.15, 8]}/><meshStandardMaterial color="#849f94" metalness={0.5}/></mesh>)}</group>
 }

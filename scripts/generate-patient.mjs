@@ -1,19 +1,34 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, link, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { readGlb } from './lib/glb.mjs'
+import { getOrStartJob, requestJson, saveJob } from './lib/genapi-job.mjs'
+import { parseArgs } from 'node:util'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const envPath = process.env.GEN_API_ENV_FILE
   ? resolve(process.env.GEN_API_ENV_FILE)
   : resolve(projectRoot, '.env.local')
-const outputPath = resolve(projectRoot, 'public/models/patient.glb')
+let args
+try {
+  args = parseArgs({ options: { variant: { type: 'string', default: '1' }, 'dry-run': { type: 'boolean' }, resume: { type: 'string' }, help: { type: 'boolean' } } }).values
+} catch { console.error('Неизвестный аргумент. Используйте --help; запрос не отправлен.'); process.exit(1) }
+const variant = args.variant
+const journalPath = resolve(projectRoot, `exports/generation-jobs/patient-a-pose-${variant}.json`)
+const outputPath = resolve(projectRoot, `public/models/patient-a-pose-${variant}.glb`)
 const supportedModelId = 'tripo-3d'
 const requestTimeout = 30_000
 const pollInterval = 5_000
 const maxPolls = 72
 const maxModelBytes = 100 * 1024 * 1024
-const prompt = 'A single fictional 72-year-old adult woman for a respectful medical-care training simulation. Full-body realistic 3D character lying supine on her back in a neutral relaxed pose, head facing upward on a small pillow, arms resting naturally at her sides with hands visible, legs straight and slightly apart. Wearing a fully closed, opaque pale-blue hospital gown covering the entire body. Calm neutral expression, age-appropriate face, anatomically plausible proportions, clear separation between limbs, clean game-ready topology, PBR materials, one isolated character only. No bed, no pillow, no blanket, no room, no props, no text, no logos, no extra limbs, no cropped body. Horizontal lying pose, suitable for placement on a hospital bed in a 3D simulation.'
+const prompt = 'A single fictional 68-year-old adult woman, full body, standing in a neutral A-pose with arms about 35 degrees away from the torso, palms inward, feet flat and shoulder-width apart. Eyes open, mouth closed, relaxed neutral face. Plain opaque light-blue short-sleeved hospital gown with trousers, hair tied back in a low ponytail, no accessories. Realistic proportions, clearly separated limbs, visible gaps between arms and torso and between legs, clean topology for humanoid rigging, PBR materials, matte skin, low-to-medium-poly game character. Pivot between feet on the floor, meters, front view, isolated neutral gray background.'
+const payload = {
+  prompt,
+  negative_prompt: 'lying pose, sitting pose, crossed arms, fused limbs, long loose hair, jewelry, blanket, bed, pillow, props, room, text, logos, extreme muscles, cartoon, extra limbs, cropped body',
+  texture: true, pbr: true, texture_quality: 'detailed', geometry_quality: 'detailed', face_limit: 50000,
+}
+
 
 function readApiKey(contents, path) {
   const entry = contents.split(/\r?\n/).find((line) => line.trim().startsWith('GEN_API_KEY='))
@@ -32,28 +47,7 @@ function readModelId(contents) {
   return modelId
 }
 
-async function requestJson(url, options, description) {
-  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(requestTimeout) })
-  const body = await response.text()
-  let data
-  try {
-    data = JSON.parse(body)
-  } catch {
-    throw new Error(`${description}: API вернул не JSON (HTTP ${response.status}).`)
-  }
-  if (!response.ok) {
-    const detail = typeof data.error === 'string' ? data.error : `HTTP ${response.status}`
-    throw new Error(`${description}: ${detail}`)
-  }
-  return data
-}
-
-function isGlb(bytes) {
-  return bytes.length >= 20
-    && bytes.toString('ascii', 0, 4) === 'glTF'
-    && bytes.readUInt32LE(4) === 2
-    && bytes.readUInt32LE(8) <= bytes.length
-}
+function isGlb(bytes) { try { readGlb(bytes); return true } catch { return false } }
 
 async function downloadGlb(url) {
   const resultUrl = new URL(url)
@@ -70,6 +64,16 @@ async function downloadGlb(url) {
 }
 
 async function main() {
+  if (args.help) { console.log('Usage: npm run generate:patient -- [--variant 1|2|3] [--dry-run] [--resume REQUEST_ID]'); return }
+  if (!['1', '2', '3'].includes(variant)) throw new Error('--variant должен быть 1, 2 или 3.')
+  if (args['dry-run']) {
+    console.log(JSON.stringify({ model: supportedModelId, output: outputPath, payload }, null, 2))
+    return
+  }
+  try {
+    await access(outputPath)
+    throw new Error('Вариант уже существует. Выберите другой --variant; резервная модель никогда не перезаписывается.')
+  } catch (error) { if (error.code !== 'ENOENT') throw error }
   let envContents
   try {
     envContents = await readFile(envPath, 'utf8')
@@ -86,18 +90,16 @@ async function main() {
     'Content-Type': 'application/json',
   }
 
-  console.log('Отправляю один запрос в GenAPI / Tripo3D H3.1...')
-  const submitted = await requestJson(
-    `https://api.gen-api.ru/api/v1/networks/${modelId}`,
-    { method: 'POST', headers, body: JSON.stringify({ prompt }) },
-    'Не удалось создать запрос генерации',
-  )
-  const requestId = submitted.request_id ?? submitted.id
-  if (requestId === undefined || requestId === null) {
-    throw new Error('GenAPI не вернул идентификатор запроса.')
-  }
-
-  console.log('Запрос принят. Ожидаю завершения генерации...')
+  const job = await getOrStartJob({
+    path: journalPath, model: modelId, variant, resumeId: args.resume,
+    submit: async () => {
+      console.log('Отправляю один запрос в GenAPI / Tripo3D H3.1...')
+      return requestJson(`https://api.gen-api.ru/api/v1/networks/${modelId}`,
+        { method: 'POST', headers, body: JSON.stringify(payload) }, 'Не удалось создать запрос генерации')
+    },
+  })
+  const requestId = job.requestId
+  console.log(`Ожидаю результат задачи ${requestId}. ID сохранён; повторной платной отправки не будет.`)
   for (let attempt = 0; attempt < maxPolls; attempt += 1) {
     await delay(pollInterval)
     const result = await requestJson(
@@ -105,6 +107,8 @@ async function main() {
       { headers: { Authorization: `Bearer ${apiKey}` } },
       'Не удалось получить статус генерации',
     )
+    job.status = result.status; job.progress = result.progress; job.checkedAt = new Date().toISOString()
+    await saveJob(journalPath, job)
     if (result.status === 'error') {
       throw new Error(typeof result.error === 'string' ? result.error : 'GenAPI сообщил об ошибке генерации.')
     }
@@ -130,19 +134,22 @@ async function main() {
     if (!modelBytes) throw lastDownloadError ?? new Error('Среди результатов не найден файл GLB.')
 
     await mkdir(dirname(outputPath), { recursive: true })
-    const temporaryPath = `${outputPath}.tmp`
+    const temporaryPath = `${outputPath}.${process.pid}.tmp`
     try {
       await writeFile(temporaryPath, modelBytes, { flag: 'wx' })
-      await rename(temporaryPath, outputPath)
+      await link(temporaryPath, outputPath)
+      await rm(temporaryPath)
     } catch (error) {
       await rm(temporaryPath, { force: true })
       throw error
     }
-    console.log(`GLB v2 сохранён в public/models/patient.glb (${(modelBytes.length / 1024 / 1024).toFixed(1)} МБ).`)
+    job.status = 'saved'; job.output = outputPath; job.bytes = modelBytes.length; job.completedAt = new Date().toISOString()
+    await saveJob(journalPath, job)
+    console.log(`A-pose GLB v2 сохранён в public/models/patient-a-pose-${variant}.glb (${(modelBytes.length / 1024 / 1024).toFixed(1)} МБ).`)
     return
   }
 
-  throw new Error('Генерация не завершилась за 6 минут. Проверьте статус запроса в GenAPI.')
+  throw new Error(`Задача ${requestId} ещё не завершена. Повторите с --resume ${requestId}: будет только получение результата, без новой оплаты.`)
 }
 
 main().catch((error) => {

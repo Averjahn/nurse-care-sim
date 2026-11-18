@@ -7,9 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "generate:room": "node scripts/generate-room.mjs",
     "generate:patient": "node scripts/generate-patient.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:animation-assets": "node --experimental-strip-types scripts/check-animation-assets.mjs",
+    "check:rig-browser": "node --experimental-strip-types scripts/check-rig-browser.mjs",
+    "prepare:patient-rig": "node scripts/prepare-patient-rig.mjs",
+    "build:patient-animations": "node scripts/build-patient-animations.mjs",
+    "optimize:patient-textures": "node scripts/optimize-patient-textures.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
@@ -17,7 +23,8 @@
     "lucide-react": "^1.72.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "three": "^0.187.0"
+    "three": "^0.187.0",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

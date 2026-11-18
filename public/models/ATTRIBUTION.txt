@@ -4,3 +4,18 @@ Licensed under Creative Commons Attribution 3.0 (CC BY 3.0):
 https://creativecommons.org/licenses/by/3.0/
 
 The model is included in this project as public/models/gradd-hospital-room.glb.
+
+Animation decoding (no new character/mocap assets are bundled):
+Draco decoder by Google, Apache License 2.0: https://github.com/google/draco
+Basis Universal transcoder by Binomial LLC, Apache License 2.0: https://github.com/BinomialLLC/basis_universal
+Files copied unchanged from the installed Three.js 0.187 distribution.
+License: public/decoders/LICENSE-APACHE-2.0.txt. Package README/source links are included beside each decoder.
+
+Patient A-pose source: supplied by the project owner as A-pose.glb on 2026-11-18.
+Container generator metadata: https://tripo3d.ai
+Source SHA-256: 5fa58345e1990350a3ea9ebe0dd4393f7fc7fdf575e5efedaef30b0d888892aa
+public/models/patient-a-pose-1.glb is an unchanged copy of that source.
+public/models/patient-rigged.glb is a locally prepared derivative: draft skeletal weights,
+procedural animation clips, breathing/compression morphs, 2K texture export.
+No third-party mocap or new paid generation was used for this derivative.
+The source's usage rights are those of the owner-supplied Tripo asset; no CC license is asserted here.

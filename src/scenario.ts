@@ -1,303 +1,78 @@
-export type TaskId =
-  | 'hand-hygiene'
-  | 'identification'
-  | 'assessment'
-  | 'vitals'
-  | 'environment'
-  | 'comfort'
-  | 'fall-prevention'
-  | 'mobility-skin'
-  | 'handoff'
+import type { Attempt, PatientState } from './simulation.ts'
 
-export interface DialogueOption {
-  text: string
-  patientReply: string
+export type CaseId = 'collapse' | 'hypertension' | 'chest-pain' | 'syncope' | 'anaphylaxis' | 'abdomen'
+export type ObjectId = 'patient' | 'bed-controls' | 'call-bell' | 'monitor' | 'chart' | 'medications' | 'oxygen' | 'window' | 'blanket' | 'heater' | 'sink' | 'injection' | 'cpr' | 'linen' | 'equipment'
+export type Severity = 'critical' | 'major' | 'minor'
+export type Stage = 1 | 2 | 3 | 4 | 5
+export type ActionId = 'talk' | 'inspect' | 'measure' | 'repeat-measure' | 'baseline' | 'call-doctor' | 'call-team' | 'ecg' | 'supine' | 'legs-up' | 'semi-sitting' | 'sitting' | 'clothing' | 'airway' | 'air' | 'oxygen' | 'blanket' | 'heat' | 'linen' | 'prepare-iv' | 'calm' | 'protocol' | 'nitro' | 'aspirin' | 'captopril' | 'adrenaline' | 'antihistamine' | 'stop-infusion' | 'stop-bleeding' | 'stop-trigger' | 'continue-infusion' | 'pain-response' | 'withhold-nitro' | 'observe-recovery' | 'avoid-intervention' | 'enema' | 'rub' | 'tea' | 'ammonia' | 'record' | 'handoff' | 'check-breathing' | 'chest-location' | 'wrong-location' | 'compression' | 'ventilate' | 'aed'
+
+export const stageTitles = ['Распознать', 'Вызвать помощь', 'Стабилизировать', 'Действовать по протоколу', 'Наблюдать и записать']
+export const objectLabels: Record<ObjectId, string> = {
+  patient: 'Пациентка', 'bed-controls': 'Функциональная кровать', 'call-bell': 'Пост и вызов помощи', monitor: 'Тонометр и пульс', chart: 'Температурный лист', medications: 'Аптечка', oxygen: 'Кислород', window: 'Окно', blanket: 'Одеяло', heater: 'Грелка', sink: 'Умывальник', injection: 'Инъекция и система', cpr: 'Реанимация', linen: 'Чистое бельё', equipment: 'Инструменты',
 }
-
-export interface CareTask {
-  id: TaskId
+export interface Step {
+  id: ActionId
   title: string
-  stage: number
-  stageTitle: string
-  objective: string
-  patientCue: string
-  dialogueOptions: DialogueOption[]
-  steps: string[]
-  tip?: string
-  source: string
+  stage: Stage
+  target: { object: ObjectId; action: ActionId }
+  deadlineSec?: number
+  when?: (attempt: Attempt) => boolean
+  forbidden?: { when: (attempt: Attempt) => boolean; severity: Severity; why: string }[]
+  effect?: (state: PatientState) => PatientState
+  order?: 'strict' | 'any'
 }
+export const actions: Step[] = [
+  ['talk', 'Спросить о жалобах', 1, 'patient'], ['inspect', 'Оценить сознание, кожу и дыхание', 1, 'patient'],
+  ['measure', 'Измерить давление и пульс', 1, 'monitor'], ['repeat-measure', 'Повторно измерить давление и пульс', 5, 'monitor'], ['baseline', 'Прочитать исходные показатели', 1, 'chart'],
+  ['call-doctor', 'Срочно вызвать врача · H', 2, 'call-bell'], ['call-team', 'Вызвать реанимационную бригаду', 2, 'call-bell'], ['ecg', 'Вызвать специалиста для ЭКГ', 4, 'call-bell'],
+  ['supine', 'Уложить на спину', 3, 'bed-controls'], ['legs-up', 'Поднять ноги, убрать подушку', 3, 'bed-controls'], ['semi-sitting', 'Помочь принять полусидячее положение', 3, 'bed-controls'], ['sitting', 'Посадить на край кровати', 3, 'bed-controls'],
+  ['clothing', 'Освободить от стесняющей одежды', 3, 'patient'], ['airway', 'Проверить проходимость дыхательных путей', 3, 'patient'], ['air', 'Открыть окно', 3, 'window'], ['oxygen', 'Подготовить и подать кислород по протоколу', 3, 'oxygen'],
+  ['blanket', 'Укрыть одеялом', 3, 'blanket'], ['heat', 'Приложить грелку', 3, 'heater'], ['linen', 'Сменить влажное бельё', 3, 'linen'], ['prepare-iv', 'Подготовить инструменты для врача', 4, 'equipment'], ['calm', 'Успокоить, сохранять контакт', 3, 'patient'],
+  ['protocol', 'Сверить учебное назначение и противопоказания', 4, 'medications'], ['nitro', 'Нитроглицерин по назначению', 4, 'medications'], ['aspirin', 'Ацетилсалициловая кислота по назначению', 4, 'medications'], ['captopril', 'Каптоприл по назначению врача', 4, 'medications'], ['adrenaline', 'Внутримышечный адреналин по экстренному протоколу', 4, 'medications'], ['antihistamine', 'Антигистаминный вместо адреналина', 4, 'medications'],
+  ['stop-infusion', 'Прекратить инфузию, сохранить венозный доступ', 3, 'injection'], ['stop-bleeding', 'Остановить видимое наружное кровотечение прямым давлением', 3, 'equipment'], ['stop-trigger', 'Прекратить контакт с предполагаемым аллергеном', 3, 'injection'], ['continue-infusion', 'Продолжить введение препарата', 4, 'injection'],
+  ['pain-response', 'Уточнить боль после вмешательства', 4, 'patient'], ['withhold-nitro', 'Воздержаться от нитроглицерина, передать врачу', 4, 'medications'], ['observe-recovery', 'Оценить возвращение сознания', 4, 'patient'], ['avoid-intervention', 'Отказаться от грелки и клизмы', 4, 'equipment'], ['enema', 'Поставить клизму', 4, 'equipment'], ['rub', 'Растирать конечности / массировать живот', 3, 'patient'], ['tea', 'Предложить питьё', 4, 'sink'], ['ammonia', 'Использовать нашатырный спирт', 4, 'sink'],
+  ['record', 'Записать фактические показатели и действия', 5, 'chart'], ['handoff', 'Передать пациентку прибывшему врачу', 5, 'call-bell'], ['check-breathing', 'Проверить реакцию и нормальное дыхание', 1, 'cpr'], ['chest-location', 'Выбрать центр грудной клетки', 3, 'cpr'], ['wrong-location', 'Выбрать область живота', 3, 'cpr'], ['compression', 'Выполнить компрессию', 3, 'cpr'], ['ventilate', 'Выполнить 2 вдоха после 30 компрессий', 3, 'cpr'], ['aed', 'Попросить принести АНД и следовать его командам', 3, 'cpr'],
+].map(([id, title, stage, object]) => ({ id: id as ActionId, title: title as string, stage: stage as Stage, target: { object: object as ObjectId, action: id as ActionId }, order: 'any' }))
 
-export const scenario = {
-  patient: {
-    name: 'Мария Андреевна',
-    age: 72,
-    summary: 'Восстановление после пневмонии. Слабость, передвигается с поддержкой.',
-    vitals: [
-      { label: 'АД', value: '128/76', unit: 'мм рт. ст.' },
-      { label: 'Пульс', value: '82', unit: 'уд/мин' },
-      { label: 'Температура', value: '36,7', unit: '°C' },
-      { label: 'Дыхание', value: '18', unit: 'в мин' },
-      { label: 'SpO₂', value: '96', unit: '%' },
-    ],
-  },
-  tasks: [
-    {
-      id: 'hand-hygiene',
-      title: 'Гигиена рук',
-      stage: 1,
-      stageTitle: 'Гигиена и безопасность перед входом',
-      objective: 'Подготовьтесь к контакту с пациенткой и снизьте риск передачи инфекции.',
-      patientCue: 'Здравствуйте. Вы будете помогать мне с утренним уходом?',
-      dialogueOptions: [
-        {
-          text: 'Да. Сначала выполню гигиену рук и проверю безопасность, затем представлюсь и объясню план ухода.',
-          patientReply: 'Хорошо, спасибо, что объяснили. Я буду знать, чего ожидать.',
-        },
-        {
-          text: 'Я помогу вам с уходом и буду рассказывать о своих действиях по ходу.',
-          patientReply: 'Так мне спокойнее. Скажите, пожалуйста, если потребуется что-то сделать самой.',
-        },
-      ],
-      steps: [
-        'Снимите украшения и подготовьте средство для гигиены рук.',
-        'Выполните гигиену рук до контакта с пациенткой.',
-        'Помните: перчатки не заменяют гигиену рук.',
-      ],
-      tip: 'Гигиена рук выполняется в нужные моменты контакта по алгоритму учреждения.',
-      source: 'ВОЗ · 5 моментов гигиены рук',
-    },
-    {
-      id: 'identification',
-      title: 'Контакт и идентификация',
-      stage: 2,
-      stageTitle: 'Оценка состояния пациента · приветствие и контакт',
-      objective: 'Представьтесь, объясните цель посещения и подтвердите личность пациентки.',
-      patientCue: 'Я Мария Андреевна. Немного волнуюсь, что вы будете делать.',
-      dialogueOptions: [
-        {
-          text: 'Здравствуйте, Мария Андреевна. Я медсестра. Сегодня мы оценим ваше самочувствие и обсудим необходимый уход. Вы согласны?',
-          patientReply: 'Да, согласна. Спасибо, что сначала рассказали о плане.',
-        },
-        {
-          text: 'Понимаю ваше волнение. Давайте сначала познакомимся, а затем я объясню каждый шаг.',
-          patientReply: 'Хорошо. Мне важно понимать, что будет происходить.',
-        },
-      ],
-      steps: [
-        'Представьтесь и объясните план ухода понятными словами.',
-        'Сверьте не менее двух идентификаторов с браслетом и документами.',
-        'Получите согласие и обеспечьте приватность перед уходом.',
-      ],
-      tip: 'Не используйте номер палаты или кровати как единственный идентификатор.',
-      source: 'Принципы безопасного ухода',
-    },
-    {
-      id: 'assessment',
-      title: 'Оценка самочувствия',
-      stage: 2,
-      stageTitle: 'Оценка состояния пациента · приветствие и контакт',
-      objective: 'Соберите актуальные жалобы и оцените состояние перед выполнением действий.',
-      patientCue: 'Я чувствую слабость. Спина немного затекла, но дышать не тяжело.',
-      dialogueOptions: [
-        {
-          text: 'Спасибо, что рассказали. Насколько сильно затекла спина? Есть ли боль, головокружение или изменение дыхания?',
-          patientReply: 'Боль небольшая. Головокружения нет, дышать по-прежнему не тяжело.',
-        },
-        {
-          text: 'Я вас услышала. Если самочувствие изменится или появится боль, пожалуйста, сразу скажите мне.',
-          patientReply: 'Хорошо, я сообщу, если что-то изменится.',
-        },
-      ],
-      steps: [
-        'Спросите о самочувствии, боли, слабости и головокружении.',
-        'Оцените сознание, дыхание и способность сообщать о дискомфорте.',
-        'Уточните ограничения активности и план ухода.',
-      ],
-      tip: 'При новом или нарастающем симптоме остановите плановые действия и сообщите ответственному специалисту.',
-      source: 'Базовая сестринская оценка',
-    },
-    {
-      id: 'vitals',
-      title: 'Контроль показателей',
-      stage: 2,
-      stageTitle: 'Оценка состояния пациента · приветствие и контакт',
-      objective: 'Повторно измерьте назначенные жизненные показатели и сравните с исходными данными.',
-      patientCue: 'Хорошо. Скажите, если мне нужно будет изменить положение руки.',
-      dialogueOptions: [
-        {
-          text: 'Я сначала объясню измерение. Если вам станет неудобно, сообщите мне, и мы остановимся.',
-          patientReply: 'Спасибо. Я скажу, если почувствую дискомфорт.',
-        },
-        {
-          text: 'Постарайтесь удобно положить руку. Я помогу расположить её перед измерением.',
-          patientReply: 'Хорошо, так мне будет проще.',
-        },
-      ],
-      steps: [
-        'Проверьте назначение и подготовьте исправные средства измерения.',
-        'Измерьте назначенные показатели с соблюдением инструкции к оборудованию.',
-        'Сравните результат с исходным состоянием и передайте значимые изменения.',
-      ],
-      tip: 'Значения в симуляторе учебные. Интерпретация зависит от пациента, контекста и локальных порогов эскалации.',
-      source: 'Учебный сценарий · контроль в динамике',
-    },
-    {
-      id: 'comfort',
-      title: 'Комфорт и приватность',
-      stage: 3,
-      stageTitle: 'Осмотр пациента и уход · профилактика осложнений',
-      objective: 'Уточните потребность пациентки и помогите устроиться удобно, сохраняя достоинство.',
-      patientCue: 'Можно меня укрыть? В палате прохладно.',
-      dialogueOptions: [
-        {
-          text: 'Конечно. Как вам будет удобнее укрыться? Я поправлю одеяло и оставлю кнопку вызова рядом.',
-          patientReply: 'Спасибо. Так удобно, и до кнопки я могу дотянуться.',
-        },
-        {
-          text: 'Сначала укрою вас, а потом уточню, комфортно ли вам и не мешает ли одеяло.',
-          patientReply: 'Хорошо. Если станет жарко, я вам скажу.',
-        },
-      ],
-      steps: [
-        'Спросите, удобно ли пациентке и нужна ли ей помощь.',
-        'Укройте пациентку и уточните комфорт после действия.',
-        'Сохраните приватность и доступ к кнопке вызова.',
-      ],
-      tip: 'Учитывайте пожелания и возможность пациентки самостоятельно поправить одеяло.',
-      source: 'Персонализированный уход',
-    },
-    {
-      id: 'fall-prevention',
-      title: 'Безопасность палаты',
-      stage: 3,
-      stageTitle: 'Осмотр пациента и уход · профилактика осложнений',
-      objective: 'Снизьте индивидуальные риски падения и убедитесь, что пациентка может позвать на помощь.',
-      patientCue: 'До туалета я обычно дохожу сама, но сегодня немного шатает.',
-      dialogueOptions: [
-        {
-          text: 'Спасибо, что предупредили. Давайте оценим ваше самочувствие и согласуем безопасную помощь перед тем, как вставать.',
-          patientReply: 'Да, сегодня лучше не торопиться. Давайте сначала проверим, как я себя чувствую.',
-        },
-        {
-          text: 'Понимаю, что вам важно сохранять самостоятельность. Я буду рядом и помогу, если вы согласитесь.',
-          patientReply: 'Спасибо. Пожалуйста, побудьте рядом, когда я буду вставать.',
-        },
-      ],
-      steps: [
-        'Проверьте тормоза и безопасное положение кровати.',
-        'Уберите препятствия, проверьте доступность обуви и необходимых вещей.',
-        'Положите кнопку вызова в доступное место и объясните, когда её использовать.',
-      ],
-      tip: 'Не ограничивайте активность автоматически: помощь и план должны учитывать состояние и пожелания пациента.',
-      source: 'NICE NG249 · профилактика падений',
-    },
-    {
-      id: 'mobility-skin',
-      title: 'Подвижность и кожа',
-      stage: 3,
-      stageTitle: 'Осмотр пациента и уход · профилактика осложнений',
-      objective: 'Уточните переносимость смены положения и потребность в помощи для профилактики осложнений неподвижности.',
-      patientCue: 'Я могу немного повернуться, если вы поможете и не будете торопиться.',
-      dialogueOptions: [
-        {
-          text: 'Спасибо. Я объясню, как мы будем менять положение, и буду действовать только с вашего согласия. Скажите, если станет больно.',
-          patientReply: 'Хорошо. Я сообщу, если почувствую боль или захочу остановиться.',
-        },
-        {
-          text: 'Давайте двигаться медленно. Перед началом я уточню ограничения и подготовлю всё необходимое.',
-          patientReply: 'Так мне подходит. Не торопитесь, пожалуйста.',
-        },
-      ],
-      steps: [
-        'Проверьте индивидуальный план перемещения и ограничения.',
-        'Получите согласие; при необходимости позовите помощника и подготовьте оборудование.',
-        'Оцените кожу в рамках компетенции, спросите о боли и сообщите об изменениях.',
-      ],
-      tip: 'Частота изменения положения индивидуальна. Не массируйте покраснения; при изменениях кожи сообщите ответственному специалисту.',
-      source: 'NICE CG179 · профилактика повреждений кожи',
-    },
-    {
-      id: 'environment',
-      title: 'Комфортный микроклимат',
-      stage: 4,
-      stageTitle: 'Окружение и санитарное состояние палаты',
-      objective: 'Уточните пожелания пациентки и помогите сделать условия в палате комфортнее.',
-      patientCue: 'Мне немного прохладно. Можно сделать в палате теплее?',
-      dialogueOptions: [
-        {
-          text: 'Конечно. Уточню, комфортно ли вам будет после небольшого изменения температуры.',
-          patientReply: 'Спасибо. Сейчас мне уже комфортнее.',
-        },
-        {
-          text: 'Я проверю настройки термостата и затем спрошу, изменились ли ваши ощущения.',
-          patientReply: 'Хорошо. Пожалуйста, убедитесь, что кнопка вызова остаётся рядом.',
-        },
-      ],
-      steps: [
-        'Уточните, комфортна ли пациентке температура в палате.',
-        'Повышайте уставку термостата до 21 °C — учебное значение этого сценария.',
-        'Уточните самочувствие пациентки после изменения температуры.',
-      ],
-      tip: 'Уставка 21 °C используется только как цель симуляции. В реальной палате учитывайте пожелания пациента и требования медицинской организации.',
-      source: 'Персонализированный уход · учебная настройка',
-    },
-    {
-      id: 'handoff',
-      title: 'Документация и передача',
-      stage: 5,
-      stageTitle: 'Выполнение назначений и документация',
-      objective: 'Завершите уход, зафиксируйте фактические наблюдения и передайте важную информацию.',
-      patientCue: 'Спасибо. Кнопка вызова у меня, теперь я знаю, когда её нажать.',
-      dialogueOptions: [
-        {
-          text: 'Пожалуйста. Перед уходом проверю, удобно ли вам и всё ли необходимое находится рядом.',
-          patientReply: 'Да, мне удобно. Спасибо, что проверили.',
-        },
-        {
-          text: 'Я зафиксирую выполненный уход и передам коллеге ваши наблюдения и пожелания.',
-          patientReply: 'Хорошо. Пожалуйста, передайте, что спина немного затекала.',
-        },
-      ],
-      steps: [
-        'Убедитесь, что пациентке удобно, а необходимые предметы доступны.',
-        'Документируйте выполненные действия и фактические показатели.',
-        'Передайте ответственному специалисту жалобы, изменения и незавершённые задачи.',
-      ],
-      tip: 'Не записывайте действие или измерение, которое фактически не выполнялось.',
-      source: 'Принципы безопасной передачи ухода',
-    },
-  ] satisfies CareTask[],
+export const actionById = (id: ActionId): Step => actions.find(action => action.id === id)!
+export interface EmergencyCase {
+  id: CaseId
+  title: string
+  description: string
+  cue: string
+  initial: Partial<PatientState>
+  required: ActionId[]
 }
+export const emergencyCases: EmergencyCase[] = [
+  { id: 'collapse', title: 'Лихорадка → коллапс', description: 'После периода жара температура резко падает. Слабость и холодный пот.', cue: 'Жар прошёл… Но мне вдруг очень холодно. Темнеет в глазах.', initial: { tempC: 39.2, sbp: 85, pulse: 118, complaint: 'weakDizzy', skin: 'coldSweat' }, required: ['talk', 'inspect', 'measure', 'baseline', 'call-doctor', 'legs-up', 'clothing', 'airway', 'air', 'oxygen', 'blanket', 'linen', 'prepare-iv', 'record', 'handoff'] },
+  { id: 'hypertension', title: 'Гипертонический криз', description: 'Тревожная новость, головная боль и нарушение зрения. Сравните АД с привычным.', cue: 'Голова раскалывается… Перед глазами мушки, в ушах шумит.', initial: { sbp: 200, pulse: 106, complaint: 'headacheVision', skin: 'flushed' }, required: ['talk', 'inspect', 'measure', 'baseline', 'call-doctor', 'supine', 'calm', 'clothing', 'air', 'protocol', 'captopril', 'record', 'handoff'] },
+  { id: 'chest-pain', title: 'Боль в груди', description: 'Давление за грудиной. Нужны оценка, ЭКГ и наблюдение за ответом на помощь.', cue: 'Давит в груди, отдаёт в левую руку. Мне страшно…', initial: { sbp: 135, pulse: 102, complaint: 'chestPain', skin: 'pale' }, required: ['talk', 'inspect', 'measure', 'baseline', 'call-doctor', 'semi-sitting', 'calm', 'clothing', 'air', 'protocol', 'aspirin', 'ecg', 'pain-response', 'record', 'handoff'] },
+  { id: 'syncope', title: 'Обморок или коллапс?', description: 'У умывальника пациентке стало плохо. Проследите за восстановлением сознания.', cue: 'В ушах звенит… Кажется, я сейчас упаду.', initial: { sbp: 88, pulse: 108, complaint: 'weakDizzy', skin: 'pale', position: 'sitting', consciousness: 'dim' }, required: ['talk', 'inspect', 'measure', 'call-doctor', 'legs-up', 'clothing', 'airway', 'air', 'observe-recovery', 'record', 'handoff'] },
+  { id: 'anaphylaxis', title: 'Реакция после инъекции', description: 'После введения лекарства появились зуд, сыпь и затруднение дыхания.', cue: 'Всё чешется… Тяжело дышать. Что со мной?', initial: { sbp: 82, pulse: 124, complaint: 'itchBreath', skin: 'rash' }, required: ['talk', 'inspect', 'measure', 'call-doctor', 'call-team', 'legs-up', 'airway', 'oxygen', 'protocol', 'adrenaline', 'record', 'handoff'] },
+  { id: 'abdomen', title: 'Острая боль в животе', description: 'Причина боли неизвестна. Решите, какие вмешательства нужно исключить.', cue: 'Очень сильно болит живот. Может, приложить что-нибудь тёплое?', initial: { sbp: 110, pulse: 104, complaint: 'abdomenPain', skin: 'pale' }, required: ['talk', 'inspect', 'measure', 'call-doctor', 'supine', 'avoid-intervention', 'record', 'handoff'] },
+]
+export const getCase = (id: CaseId) => emergencyCases.find(item => item.id === id)!
 
+// Clinical guard conditions are evaluated before any effect is applied.
+const nitro = actionById('nitro')
+nitro.forbidden = [
+  { when: a => a.patient.nitroDoses >= 3, severity: 'critical', why: 'Превышено ограничение учебного назначения: не более трёх доз.' },
+  { when: a => a.nitroMinSbp !== null && a.patient.sbp < a.nitroMinSbp, severity: 'critical', why: 'Давление ниже порога, указанного преподавателем в учебном назначении.' },
+  { when: a => !a.measurement || a.measurement.at <= a.lastNitroAt, severity: 'major', why: 'Перед каждой дозой нужно заново измерить давление и пульс.' },
+]
+nitro.when = a => a.episode === 'chest-pain' && a.nitroMinSbp !== null
+nitro.effect = p => ({ ...p, nitroDoses: p.nitroDoses + 1 })
+actionById('call-doctor').deadlineSec = 30
+
+export const scenario = { patient: { name: 'Мария Андреевна', age: 68, vitals: [
+  { label: 'T', value: '37,0', unit: '°C' }, { label: 'АД', value: '120', unit: 'мм рт. ст.' }, { label: 'Пульс', value: '80', unit: '/мин' },
+] } }
 export const sourceReferences = [
-  {
-    organization: 'Всемирная организация здравоохранения',
-    title: 'My 5 Moments for Hand Hygiene',
-    summary: 'Моменты гигиены рук при оказании медицинской помощи.',
-    url: 'https://www.who.int/publications/m/item/five-moments-for-hand-hygiene',
-  },
-  {
-    organization: 'NICE · Руководство CG179',
-    title: 'Pressure ulcers: prevention and management',
-    summary: 'Оценка риска, осмотр кожи и индивидуальная профилактика повреждений от давления.',
-    url: 'https://www.nice.org.uk/guidance/cg179',
-  },
-  {
-    organization: 'NICE · Руководство NG249',
-    title: 'Falls: assessment and prevention in older people and in people 50 and over at higher risk',
-    summary: 'Актуальные рекомендации по оценке и профилактике падений, включая стационар.',
-    url: 'https://www.nice.org.uk/guidance/ng249',
-  },
-  {
-    organization: 'Всемирная организация здравоохранения',
-    title: 'WHO Guidelines on Hand Hygiene in Health Care',
-    summary: 'Руководство ВОЗ по гигиене рук в медицинских организациях.',
-    url: 'https://www.who.int/publications/i/item/9789241597906',
-  },
-  {
-    organization: 'Poly Pizza · GRADD CO · CC BY 3.0',
-    title: 'GRADD Hospital Room by GRADD CO [CC-BY] via Poly Pizza',
-    summary: '3D-модель палаты, медицинской кровати и оборудования. Лицензия требует указания автора и ссылки на CC BY 3.0.',
-    url: 'https://poly.pizza/m/9sUalfQ76kn',
-  },
+  { organization: 'Материалы проекта · исходник пользователя', title: 'Пациентка: A-pose и локальный риг', summary: 'Модель предоставлена владельцем проекта; генератор в метаданных — Tripo3D. Риг и базовые клипы подготовлены локально, без стороннего mocap.', url: '' },
+  { organization: 'Google · Binomial LLC · Apache 2.0', title: 'Draco и Basis Universal', summary: 'Локальные декодеры сжатой геометрии и KTX2-текстур. Новые сторонние персонажи и mocap пока не включены.', url: 'https://github.com/google/draco' },
+  { organization: 'RCUK · 2025', title: 'Анафилаксия и особые обстоятельства', summary: 'Адреналин внутримышечно — первая линия; антигистаминный не заменяет его.', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/special-circumstances-guidelines' },
+  { organization: 'NICE · CG95', title: 'Боль в груди: оценка и диагностика', summary: 'Ответ на нитроглицерин не используется для постановки диагноза. Нужны обследование и ЭКГ.', url: 'https://www.nice.org.uk/guidance/cg95/chapter/recommendations' },
+  { organization: 'RCUK · 2025', title: 'Базовая реанимация взрослых', summary: 'Ранний вызов, компрессии 100–120/мин, АНД; 30:2 при навыке искусственного дыхания.', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-basic-life-support-guidelines' },
+  { organization: 'Учебный план', title: 'Методические материалы А и Б', summary: 'Библиографические данные не приложены. Сроки ухудшения — игровые; лекарственные действия требуют проверки преподавателем.', url: '' },
+  { organization: 'GRADD CO · CC BY 3.0', title: 'GRADD Hospital Room', summary: 'Модель палаты: GRADD CO, Poly Pizza, лицензия CC BY 3.0.', url: 'https://poly.pizza/m/9sUalfQ76kn' },
 ]

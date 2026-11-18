@@ -676,6 +676,25 @@ function TiledFloor({ bounds }: { bounds: THREE.Box3 }) {
   </mesh>
 }
 
+function TwoToneWall({ bounds, floorY }: { bounds: THREE.Box3; floorY: number }) {
+  const center = bounds.getCenter(new THREE.Vector3())
+  const size = bounds.getSize(new THREE.Vector3())
+  const dividerY = THREE.MathUtils.clamp(floorY + 1.2, bounds.min.y, bounds.max.y)
+  const trimHeight = 0.035
+  const bands = [
+    { bottom: bounds.min.y, top: dividerY - trimHeight / 2, color: '#a7c6cf' },
+    { bottom: dividerY - trimHeight / 2, top: dividerY + trimHeight / 2, color: '#d4deda' },
+    { bottom: dividerY + trimHeight / 2, top: bounds.max.y, color: '#f3f0e9' },
+  ]
+
+  return <group name="TwoToneWall">
+    {bands.map(({ bottom, top, color }) => <mesh key={color} position={[center.x, (bottom + top) / 2, center.z]}>
+      <boxGeometry args={[size.x, top - bottom, size.z]} />
+      <meshStandardMaterial color={color} roughness={0.9} />
+    </mesh>)}
+  </group>
+}
+
 function HospitalRoomAsset({
   covered,
   firstPerson,
@@ -695,7 +714,7 @@ function HospitalRoomAsset({
   const [bedReady, setBedReady] = useState(false)
   const onBedReady = useCallback((ready: boolean) => setBedReady(ready), [])
   const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
-  const { model, scale, offset, floorBounds } = useMemo(() => {
+  const { model, scale, offset, floorBounds, wallBounds } = useMemo(() => {
     const model = scene.clone(true)
     model.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(model)
@@ -704,6 +723,7 @@ function HospitalRoomAsset({
     const scale = 8.5 / Math.max(size.x, size.z)
     const offset = new THREE.Vector3(-center.x * scale, -bounds.min.y * scale, -center.z * scale)
     let floorBounds: THREE.Box3 | null = null
+    const wallBounds: THREE.Box3[] = []
     model.traverse(object => {
       if (!(object instanceof THREE.Mesh)) return
       const slab = new THREE.Box3().setFromObject(object)
@@ -711,18 +731,30 @@ function HospitalRoomAsset({
       if (slabSize.x > size.x * 0.8 && slabSize.z > size.z * 0.8 && slabSize.y < Math.max(size.x, size.z) * 0.05) {
         if (!floorBounds || slab.max.y < floorBounds.max.y) floorBounds = slab
       }
+      // Replace only the room's solid wall slabs; equipment keeps its materials.
+      const thinWall = Math.min(slabSize.x, slabSize.z) < Math.max(size.x, size.z) * 0.05
+      const longWall = slabSize.x > size.x * 0.8 || slabSize.z > size.z * 0.8
+      if (thinWall && longWall && slabSize.y > size.y * 0.8) {
+        wallBounds.push(slab)
+        object.visible = false
+      }
     })
     const normalizedFloor = floorBounds as THREE.Box3 | null
     if (normalizedFloor) {
       normalizedFloor.min.multiplyScalar(scale).add(offset)
       normalizedFloor.max.multiplyScalar(scale).add(offset)
     }
+    wallBounds.forEach(wall => {
+      wall.min.multiplyScalar(scale).add(offset)
+      wall.max.multiplyScalar(scale).add(offset)
+    })
     if (bedReady) model.traverse(object => { if (object.name.includes('Hospital_Bed')) object.visible = false })
     return {
     model,
     scale,
     offset,
     floorBounds: normalizedFloor,
+    wallBounds,
     }
   }, [scene, bedReady])
 
@@ -733,6 +765,7 @@ function HospitalRoomAsset({
     </group>
 
     {floorBounds && <TiledFloor bounds={floorBounds} />}
+    {wallBounds.map((bounds, index) => <TwoToneWall key={index} bounds={bounds} floorY={floorBounds?.max.y ?? 0} />)}
 
     <HospitalWindow open={windowOpen} />
 

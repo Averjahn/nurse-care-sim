@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Activity, RotateCcw, X, ArrowLeft, Check } from 'lucide-react'
 import RoomScene, { type BlanketTransform, type PatientTransform } from './RoomScene'
 import { actions, actionById, emergencyCases, getCase, objectLabels, stageTitles, type ActionId, type CaseId, type ObjectId } from './scenario'
 import { consciousnessLabels, elapsed, nextObject, patientCue, positionLabels, requiredActions, routeLabels, skinLabels, stageScores, type Attempt } from './simulation'
 import { useSimulationStore } from './store'
+import { placeActionPopover, type ScreenPoint } from './actionPopover'
 import './App.css'
 
 const PATIENT_TRANSFORM_STORAGE_KEY = 'careflow-patient-transform-v3'
@@ -130,6 +131,34 @@ function App() {
   const [speed, setSpeed] = useState(1)
   const [nitroThreshold, setNitroThreshold] = useState('')
   const [selectedObject, setSelectedObject] = useState<ObjectId | null>(null)
+  const [actionPoint, setActionPoint] = useState<[number, number, number] | null>(null)
+  const actionPanelRef = useRef<HTMLElement>(null)
+  const panelSize = useRef({ width: 0, height: 0 })
+  const lastAnchorPoint = useRef<ScreenPoint | null>(null)
+  const actionAnchor = useMemo(() => selectedObject ? { object: selectedObject, point: actionPoint } : undefined, [selectedObject, actionPoint])
+  const positionActionPanel = useCallback((point: ScreenPoint) => {
+    lastAnchorPoint.current = point
+    const panel = actionPanelRef.current
+    if (!panel) return
+    const size = panelSize.current.width ? panelSize.current : { width: panel.offsetWidth, height: panel.offsetHeight }
+    const position = placeActionPopover(point, size, { width: window.innerWidth, height: window.innerHeight })
+    const x = `${Math.round(position.x)}px`, y = `${Math.round(position.y)}px`
+    if (panel.style.left !== x) panel.style.left = x
+    if (panel.style.top !== y) panel.style.top = y
+    if (panel.style.visibility !== 'visible') panel.style.visibility = 'visible'
+  }, [])
+  useLayoutEffect(() => {
+    const panel = actionPanelRef.current
+    if (!panel) return
+    const measure = () => {
+      panelSize.current = { width: panel.offsetWidth, height: panel.offsetHeight }
+      if (lastAnchorPoint.current) positionActionPanel(lastAnchorPoint.current)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [selectedObject, positionActionPanel])
   const [acknowledgedHint, setAcknowledgedHint] = useState<string | null>(null)
   const [firstPerson, setFirstPerson] = useState(false)
   const [pointerLocked, setPointerLocked] = useState(false)
@@ -152,11 +181,14 @@ function App() {
   const handlePointerLockChange = useCallback((locked: boolean) => setPointerLocked(locked), [])
   const handlePointerLockError = useCallback(() => setNavigationHint('Захват мыши недоступен: осматривайтесь перетаскиванием с зажатой ЛКМ.'), [])
   const unlock = () => { if (document.pointerLockElement) document.exitPointerLock() }
-  const selectObject = (object: ObjectId) => {
+  const selectObject = (object: ObjectId, point?: [number, number, number], screen?: ScreenPoint) => {
     const current = useSimulationStore.getState().attempt
     if (!current || !['active', 'arrest'].includes(current.phase)) return
     unlock()
     if (object === hint) setAcknowledgedHint(hintKey)
+    lastAnchorPoint.current = screen ?? null
+    if (screen) positionActionPanel(screen)
+    setActionPoint(point ?? null)
     setSelectedObject(object); setMeasurementProgress(null); setPulseTaps(0); setMeasurementResult('')
   }
   const saveAttempt = useCallback((a: Attempt) => {
@@ -268,6 +300,7 @@ function App() {
     <section className="scene-wrap"><RoomScene
       covered={attempt?.completed.includes('blanket') ?? false} firstPerson={firstPerson && active}
       firstPersonCameraHeight={firstPersonCameraHeight} blanketTransform={blanketTransform} patientTransform={patientTransform}
+      actionAnchor={actionAnchor} onActionPosition={positionActionPanel}
       targetAction={!selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
       animationClock={{ speed: attempt?.speed ?? 1, paused: attempt?.paused ?? false, compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
       patientState={attempt?.patient} doctorArrived={attempt?.doctorArrived || attempt?.teamArrived} windowOpen={attempt?.completed.includes('air')}
@@ -289,7 +322,7 @@ function App() {
           <div className="patient-observations"><span>Сознание <strong>{consciousnessLabels[attempt.patient.consciousness]}</strong></span><span>Кожа <strong>{skinLabels[attempt.patient.skin]}</strong></span><span>Положение <strong>{positionLabels[attempt.patient.position]}</strong></span>{attempt.caseId === 'anaphylaxis' && <span>Исходная инъекция <strong>{routeLabels[attempt.patient.injectionRoute]}</strong></span>}{attempt.caseId === 'collapse' && <span>Контекст <strong>{({ fever: 'критическое падение T', bleeding: 'наружное кровотечение', medication: 'после гипотензивного', trauma: 'травма' } as Record<string, string>)[attempt.variant] ?? 'после смены положения'}</strong></span>}</div>
           <div className="observed-vitals"><span className="eyebrow">{attempt.measurement ? `ПОСЛЕДНЕЕ ИЗМЕРЕНИЕ · ${time(attempt.measurement.at)}` : 'ПОКАЗАТЕЛИ ЕЩЁ НЕ ИЗМЕРЕНЫ'}</span><div><strong>{attempt.measurement?.sbp ?? '—'}<small>САД · мм рт. ст.</small></strong><strong>{attempt.measurement?.pulse ?? '—'}<small>Пульс · /мин</small></strong><strong>{attempt.measurement?.tempC.toFixed(1) ?? '—'}<small>T · °C</small></strong></div></div>
         </aside>
-        {selectedObject && <section className="action-panel glass-panel" aria-label={`Действия: ${objectLabels[selectedObject]}`}><div className="panel-heading"><div><span className="eyebrow">ВЗАИМОДЕЙСТВИЕ</span><h2>{objectLabels[selectedObject]}</h2></div><button className="icon-button" aria-label="Закрыть действия" onClick={() => { setSelectedObject(null); setMeasurementProgress(null) }}><X size={18}/></button></div>
+        {selectedObject && <section ref={actionPanelRef} className="action-panel glass-panel" aria-label={`Действия: ${objectLabels[selectedObject]}`}><div className="panel-heading"><div><span className="eyebrow">ВЗАИМОДЕЙСТВИЕ</span><h2>{objectLabels[selectedObject]}</h2></div><button className="icon-button" aria-label="Закрыть действия" onClick={() => { setSelectedObject(null); setMeasurementProgress(null) }}><X size={18}/></button></div>
           {selectedObject === 'chart' && <div className="chart-data"><p>Температурный лист · учебные данные</p>{attempt.baselineRead ? <p>До эпизода: САД {attempt.patient.habitualSbp} мм рт. ст.; пульс 80/мин; T 37,0 °C.</p> : <p>Откройте исходную запись, чтобы сравнить показатели.</p>}{attempt.measurement && <p>Измерено в {time(attempt.measurement.at)}: САД {attempt.measurement.sbp}; пульс {attempt.measurement.pulse}; T {attempt.measurement.tempC} °C.</p>}{attempt.repeatMeasurement && <p>Повторно в {time(attempt.repeatMeasurement.at)}: САД {attempt.repeatMeasurement.sbp}; пульс {attempt.repeatMeasurement.pulse}.</p>}{attempt.completed.includes('record') && <p><Check size={14}/> Наблюдения и журнал действий внесены в лист.</p>}</div>}
           {selectedObject === 'medications' && <p className="context-note">Учебные назначения без доз: препараты выбираются после сверки показаний, аллергий и противопоказаний. Нитроглицерин: {attempt.nitroMinSbp === null ? 'порог САД не задан — воздержаться и обратиться к врачу' : `порог преподавателя ${attempt.nitroMinSbp} мм рт. ст.; не более 3 доз; повтор не ранее 5 минут`}. При анафилаксии адреналин не ждёт прибытия врача.</p>}
           {selectedObject === 'injection' && <p className="context-note">Путь исходного препарата: {routeLabels[attempt.patient.injectionRoute]}. При внутривенном введении прекратите инфузию и сохраните доступ. Для других путей прекратите дальнейшее введение.</p>}

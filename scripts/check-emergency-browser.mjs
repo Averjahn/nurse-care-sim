@@ -72,7 +72,11 @@ try {
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1})
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1})
     await sleep(150)
-    await wait('document.querySelector(".action-panel") !== null',`${id}: scene click opens actions`)
+    await wait('document.querySelector(".action-panel")?.style.visibility === "visible"',`${id}: scene click opens anchored actions`)
+    const popup=await evaluate(`(()=>{const r=document.querySelector('.action-panel').getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})()`)
+    assert.ok(popup.left>=10 && popup.top>=64 && popup.right<=await evaluate('innerWidth')-10 && popup.bottom<=await evaluate('innerHeight')-10,'Popup fits viewport')
+    const distance=Math.hypot(Math.max(popup.left-point.x,0,point.x-popup.right),Math.max(popup.top-point.y,0,point.y-popup.bottom))
+    assert.ok(distance<60,'Popup appears beside the clicked 3D object')
     assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName('+JSON.stringify('interaction-'+id)+').userData.hinted'),false,'Click acknowledges hint')
   }
   const action = name => click('.context-actions button', name)
@@ -114,7 +118,7 @@ try {
   await wait('window.__threeStore.getState().scene.getObjectByName("interaction-patient").userData.hinted','patient hint')
   const glow=[]
   for(let i=0;i<8;i++){
-    const sample=await evaluate(`(()=>{const root=window.__threeStore.getState().scene.getObjectByName('interaction-patient');let intensity=0;root.traverse(o=>{if(o.material?.emissive)intensity=Math.max(intensity,o.material.emissiveIntensity)});return {scale:root.scale.x,intensity}})()`)
+    const sample=await evaluate(`(()=>{const root=window.__threeStore.getState().scene.getObjectByName('interaction-patient');let intensity=0;root.traverse(o=>{if(o.material?.emissive){const shader={uniforms:{},fragmentShader:'#include <opaque_fragment>'};o.material.onBeforeCompile(shader,window.__threeStore.getState().gl);intensity=Math.max(intensity,shader.uniforms.interactionStrength?.value??0)}});return {scale:root.scale.x,intensity}})()`)
     assert.equal(sample.scale,1,'Highlighted patient keeps original size');glow.push(sample.intensity);await sleep(100)
   }
   assert.ok(Math.max(...glow)-Math.min(...glow)>0.1,'Patient mesh itself glows')
@@ -122,6 +126,7 @@ try {
   await wait('window.__threeStore.getState().scene.getObjectByName("interaction-call-bell").userData.hinted','call button hint')
   const samples=[]
   for(let i=0;i<20;i++){samples.push(await evaluate('window.__threeStore.getState().scene.getObjectByName("interaction-call-bell").scale.x'));await sleep(90)}
+  if (Math.max(...samples)<=1.47 || Math.min(...samples)>=1.03) console.log('Pulse samples', samples)
   assert.ok(Math.max(...samples)>1.47 && Math.max(...samples)<=1.5,'Call button pulses up to 1.5×')
   assert.ok(Math.min(...samples)<1.03,'Call button returns to original scale')
   await select('call-bell')
@@ -133,6 +138,7 @@ try {
   await evaluate('(()=>{const {camera}=window.__threeStore.getState();camera.position.set(1.9,1.475,0.98);camera.lookAt(1.9,1.475,-3.62);camera.updateMatrixWorld()})()')
   await wait('document.querySelector(".crosshair-label").textContent.includes("Кислород")','unlimited first-person reach')
   assert.equal(exceptions.length,0,JSON.stringify(exceptions))
+  assert.ok(await evaluate('window.__threeStore.getState().gl.info.programs.every(p=>p.diagnostics?.runnable!==false)'), 'GPU shaders compile')
   console.log('Browser passed: minimal HUD, real 3D clicks, assessment, bed auto-close, measurement, stabilization, physical chart, handoff, mobile layout, contextual feedback, 1.5× bell pulse, fixed patient scale, click acknowledgement, first-person reach. No runtime exceptions.')
 } finally {
   ws?.close();chrome.kill('SIGTERM');chrome.stderr.destroy();chrome.unref()

@@ -4,6 +4,7 @@ import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState,
 import * as THREE from 'three'
 import { objectLabels, type ObjectId } from './scenario'
 import { basePatient, type PatientState } from './simulation'
+import { bindInteractionHighlight, HINT_COLOR } from './interactionHighlight'
 import { AnimatedBed, AnimatedPatient } from './RiggedActors'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -35,7 +36,9 @@ interface RoomSceneProps {
   patientTransform: PatientTransform
   targetAction: SceneAction | null
   onFocusObject?: (object: ObjectId | null) => void
-  onAction: (action: SceneAction) => void
+  onAction: (action: SceneAction, point?: [number, number, number], screen?: { x: number; y: number }) => void
+  actionAnchor?: { object: ObjectId; point: [number, number, number] | null }
+  onActionPosition?: (point: { x: number; y: number }) => void
   onPointerLockChange: (locked: boolean) => void
   onPointerLockError: () => void
 }
@@ -46,7 +49,7 @@ const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb?v=2`
 const PATIENT_REAL_WORLD_SCALE = 1
 const STORAGE_SHELF_X = 2.902
 const FIRST_PERSON_EYE_HEIGHT = 3.4
-const ACTION_HIGHLIGHT_COLOR = '#ffd54a'
+const ACTION_HIGHLIGHT_COLOR = HINT_COLOR
 
 async function isGlbAvailable(url: string) {
   const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
@@ -738,6 +741,25 @@ function HospitalRoomAsset({
   )
 }
 
+function ActionAnchor({ anchor, onPosition }: { anchor: NonNullable<RoomSceneProps['actionAnchor']>; onPosition: NonNullable<RoomSceneProps['onActionPosition']> }) {
+  const { scene, camera, size } = useThree()
+  const local = useRef<{ object: THREE.Object3D; point: THREE.Vector3 } | null>(null)
+  const screen = useMemo(() => new THREE.Vector3(), [])
+  useEffect(() => { local.current = null }, [anchor])
+  useFrame(() => {
+    if (!local.current) {
+      const object = scene.getObjectByName(`interaction-${anchor.object}`)
+      if (!object) return
+      const point = anchor.point ? object.worldToLocal(new THREE.Vector3(...anchor.point)) : new THREE.Vector3()
+      local.current = { object, point }
+    }
+    screen.copy(local.current.point)
+    local.current.object.localToWorld(screen).project(camera)
+    onPosition({ x: (screen.x + 1) * size.width / 2, y: (1 - screen.y) * size.height / 2 })
+  })
+  return null
+}
+
 function Room({
   covered,
   firstPerson,
@@ -753,6 +775,8 @@ function Room({
   animationClock = DEFAULT_ANIMATION_CLOCK,
   doctorArrived,
   windowOpen,
+  actionAnchor,
+  onActionPosition,
 }: RoomSceneProps) {
   return (
     <>
@@ -775,6 +799,7 @@ function Room({
         onFocusObject={onFocusObject}
       />
     </Suspense>
+    {actionAnchor && onActionPosition && <ActionAnchor anchor={actionAnchor} onPosition={onActionPosition} />}
     {firstPerson ? (
       <FirstPersonNavigation
         firstPersonCameraHeight={firstPersonCameraHeight}
@@ -921,42 +946,33 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
   const [hovered, setHovered] = useState(false)
   const [reducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   const elapsed = useRef(0)
-  const originals = useRef(new Map<THREE.Material, { color: THREE.Color; emissive?: THREE.Color; intensity?: number }>())
-  const yellow = useMemo(() => new THREE.Color(ACTION_HIGHLIGHT_COLOR), [])
-  const restore = useCallback(() => {
-    originals.current.forEach((base, material) => {
-      if (material instanceof THREE.MeshStandardMaterial) {
-        material.color.copy(base.color)
-        material.emissive.copy(base.emissive!)
-        material.emissiveIntensity = base.intensity!
-      } else if (material instanceof THREE.MeshBasicMaterial) material.color.copy(base.color)
-    })
-    originals.current.clear()
-  }, [])
-  useEffect(() => restore, [restore])
+  const cachedChild = useRef<THREE.Object3D | null>(null)
+  const highlight = useRef<ReturnType<typeof bindInteractionHighlight> | null>(null)
+  useEffect(() => () => highlight.current?.dispose(), [])
   useFrame((_, delta) => {
-    if (!ref.current) return
-    if (!highlighted && !hovered) { elapsed.current = 0; ref.current.scale.setScalar(1); restore(); return }
+    const root = ref.current
+    if (!root) return
+    // Async GLB arrival replaces the first child. Discover materials only then,
+    // not on every pulse frame, and prepare shaders before their first draw.
+    const child = root.children[0] ?? null
+    if (child !== cachedChild.current) {
+      highlight.current?.dispose()
+      highlight.current = child ? bindInteractionHighlight(child) : null
+      cachedChild.current = child
+    }
+    if (!highlighted && !hovered) {
+      elapsed.current = 0
+      if (root.scale.x !== 1) root.scale.setScalar(1)
+      if (highlight.current) highlight.current.strength.value = 0
+      return
+    }
     elapsed.current += delta
     const pulse = reducedMotion ? 0.5 : (1 - Math.cos(elapsed.current * Math.PI * 2 / 1.6)) / 2
-    ref.current.scale.setScalar(highlighted && !reducedMotion ? 1 + growth * pulse : 1)
-    ref.current.traverse(node => {
-      if (!(node instanceof THREE.Mesh)) return
-      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
-        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshBasicMaterial)) continue
-        if (!originals.current.has(material)) originals.current.set(material, {
-          color: material.color.clone(),
-          ...(material instanceof THREE.MeshStandardMaterial ? { emissive: material.emissive.clone(), intensity: material.emissiveIntensity } : {}),
-        })
-        if (material instanceof THREE.MeshStandardMaterial) {
-          material.emissive.copy(yellow)
-          material.emissiveIntensity = highlighted ? 0.12 + 0.65 * pulse : 0.18
-        } else material.color.copy(originals.current.get(material)!.color).lerp(yellow, highlighted ? 0.12 + 0.25 * pulse : 0.12)
-      }
-    })
+    if (growth > 0) root.scale.setScalar(highlighted && !reducedMotion ? 1 + growth * pulse : 1)
+    if (highlight.current) highlight.current.strength.value = highlighted ? 0.3 + 0.65 * pulse : 0.25
   })
   return <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
-    onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id) }}
+    onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
     onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}
     onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
     {children}
@@ -981,6 +997,7 @@ function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, 
 function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'onAction' | 'onFocusObject'>) {
   const { camera, scene, gl } = useThree()
   const target = useRef<ObjectId | null>(null)
+  const hitPoint = useRef<[number, number, number] | undefined>(undefined)
   const rayRef = useRef(new THREE.Raycaster())
   useFrame(() => {
     const ray = rayRef.current
@@ -988,6 +1005,7 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
     ray.far = Infinity
     const hit = ray.intersectObjects(scene.children, true).find(hit => hit.object.visible && hit.object instanceof THREE.Mesh)
     let object: THREE.Object3D | null = hit?.object ?? null
+    hitPoint.current = hit?.point.toArray()
     const previousTarget = target.current
     target.current = null
     while (object) {
@@ -997,7 +1015,11 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
     if (previousTarget !== target.current) onFocusObject?.(target.current)
   })
   useEffect(() => {
-    const interact = () => { if (target.current) onAction(target.current) }
+    const interact = () => {
+      if (!target.current) return
+      const rect = gl.domElement.getBoundingClientRect()
+      onAction(target.current, hitPoint.current, { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+    }
     const key = (e: KeyboardEvent) => { if (e.code === 'KeyE' && !e.repeat && document.pointerLockElement === gl.domElement) { e.preventDefault(); interact() } }
     const click = (e: MouseEvent) => { if (document.pointerLockElement === gl.domElement && target.current) { e.preventDefault(); interact() } }
     window.addEventListener('keydown', key); gl.domElement.addEventListener('click', click)

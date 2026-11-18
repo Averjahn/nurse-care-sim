@@ -8,6 +8,7 @@ import { BED_BONES, bedAngles, patientMorphs, patientPose, validatePatientRig, t
 import { applyRigMorphs, applyRigSkin, bindRigClips, cleanRigClothing, cloneRigMaterials, mergeRigClips, rigInventory } from './rigAssets'
 import { CompressionPlayback, RigPlayback } from './rigPlayback'
 import type { PatientState } from './simulation'
+import { installPatientPicking } from './patientPicking'
 
 const ROOT = import.meta.env.BASE_URL
 const PATIENT_ASSETS = [`${ROOT}models/patient-rigged.glb`, `${ROOT}models/patient-anims.glb`] as const
@@ -61,6 +62,7 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
       const clips = bindRigClips(object, mergeRigClips(loaded[0].animations, loaded[1]?.animations ?? []))
       const result = validatePatientRig(rigInventory(object, clips))
       if (!result.ok) throw new Error(result.errors.join(' '))
+      installPatientPicking(object)
       for (const warning of result.warnings) console.warn(warning)
       const morphMeshes: THREE.Mesh[] = [], skin: { material: THREE.MeshStandardMaterial; base: THREE.Color; roughness: number }[] = []
       object.traverse(node => {

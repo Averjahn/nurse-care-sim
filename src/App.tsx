@@ -266,6 +266,7 @@ function App() {
     if (id === 'measure' || id === 'repeat-measure') { measurementStarted.current = performance.now(); setMeasurementProgress(0); setPulseTaps(0); setMeasurementResult(''); return }
     const previous = useSimulationStore.getState().attempt
     act(id)
+    if (actionById(id).target.object === 'bed-controls') setSelectedObject(null)
     const after = useSimulationStore.getState().attempt
     if (after && after.events.length > (previous?.events.length ?? 0) && after.events.at(-1)?.kind === 'action' && ['nitro', 'aspirin', 'adrenaline', 'captopril', 'oxygen', 'blanket', 'stop-infusion'].includes(id)) setHeldItem(actionById(id).title)
   }

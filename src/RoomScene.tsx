@@ -1,4 +1,4 @@
-import { Edges, Html, OrbitControls, useGLTF } from '@react-three/drei'
+import { Edges, Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei'
 import { Canvas, type ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
@@ -653,6 +653,29 @@ function HospitalRoomModel(props: HospitalRoomModelProps) {
   )
 }
 
+function TiledFloor({ bounds }: { bounds: THREE.Box3 }) {
+  const source = useTexture(`${import.meta.env.BASE_URL}textures/floor.webp`)
+  const gl = useThree(state => state.gl)
+  const size = bounds.getSize(new THREE.Vector3())
+  const center = bounds.getCenter(new THREE.Vector3())
+  const texture = useMemo(() => {
+    const map = source.clone()
+    map.colorSpace = THREE.SRGBColorSpace
+    map.wrapS = map.wrapT = THREE.RepeatWrapping
+    // The image contains 3 × 2 tiles, each approximately 60 cm square.
+    map.repeat.set(size.x / 1.8, size.z / 1.2)
+    map.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy())
+    map.needsUpdate = true
+    return map
+  }, [source, size.x, size.z, gl])
+  useEffect(() => () => texture.dispose(), [texture])
+
+  return <mesh name="TiledFloor" position={[center.x, bounds.max.y + 0.002, center.z]} rotation={[-Math.PI / 2, 0, 0]}>
+    <planeGeometry args={[size.x, size.z]} />
+    <meshStandardMaterial map={texture} roughness={0.8} />
+  </mesh>
+}
+
 function HospitalRoomAsset({
   covered,
   firstPerson,
@@ -672,18 +695,34 @@ function HospitalRoomAsset({
   const [bedReady, setBedReady] = useState(false)
   const onBedReady = useCallback((ready: boolean) => setBedReady(ready), [])
   const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
-  const { model, scale, offset } = useMemo(() => {
+  const { model, scale, offset, floorBounds } = useMemo(() => {
     const model = scene.clone(true)
     model.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(model)
     const size = bounds.getSize(new THREE.Vector3())
     const center = bounds.getCenter(new THREE.Vector3())
     const scale = 8.5 / Math.max(size.x, size.z)
+    const offset = new THREE.Vector3(-center.x * scale, -bounds.min.y * scale, -center.z * scale)
+    let floorBounds: THREE.Box3 | null = null
+    model.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return
+      const slab = new THREE.Box3().setFromObject(object)
+      const slabSize = slab.getSize(new THREE.Vector3())
+      if (slabSize.x > size.x * 0.8 && slabSize.z > size.z * 0.8 && slabSize.y < Math.max(size.x, size.z) * 0.05) {
+        if (!floorBounds || slab.max.y < floorBounds.max.y) floorBounds = slab
+      }
+    })
+    const normalizedFloor = floorBounds as THREE.Box3 | null
+    if (normalizedFloor) {
+      normalizedFloor.min.multiplyScalar(scale).add(offset)
+      normalizedFloor.max.multiplyScalar(scale).add(offset)
+    }
     if (bedReady) model.traverse(object => { if (object.name.includes('Hospital_Bed')) object.visible = false })
     return {
     model,
     scale,
-    offset: new THREE.Vector3(-center.x * scale, -bounds.min.y * scale, -center.z * scale),
+    offset,
+    floorBounds: normalizedFloor,
     }
   }, [scene, bedReady])
 
@@ -692,6 +731,8 @@ function HospitalRoomAsset({
     <group position={offset} scale={scale}>
       <primitive object={model} />
     </group>
+
+    {floorBounds && <TiledFloor bounds={floorBounds} />}
 
     <HospitalWindow open={windowOpen} />
 

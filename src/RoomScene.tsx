@@ -4,8 +4,12 @@ import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState,
 import * as THREE from 'three'
 import { objectLabels, type ObjectId } from './scenario'
 import { basePatient, type PatientState } from './simulation'
-import { bindInteractionHighlight, HINT_COLOR } from './interactionHighlight'
+import { HINT_COLOR } from './interactionHighlight'
 import { AnimatedBed, AnimatedPatient } from './RiggedActors'
+import { EditableTarget, EditorPulse, SceneEditorControls } from './SceneEditor3D'
+import { splitRoomObjects } from './importedRoomObjects'
+import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
+import { useObjectHighlight } from './useObjectHighlight'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
 export type SceneAction = ObjectId
@@ -50,6 +54,9 @@ const PATIENT_REAL_WORLD_SCALE = 1
 const STORAGE_SHELF_X = 2.902
 const FIRST_PERSON_EYE_HEIGHT = 3.4
 const ACTION_HIGHLIGHT_COLOR = HINT_COLOR
+// Stable options prevent Fiber from recreating the camera on every timer tick.
+// Saved view changes are applied imperatively by SceneEditorControls.
+const INITIAL_CAMERA = { position: [7.2, 6.8, 8.5] as [number, number, number], fov: 36 }
 
 async function isGlbAvailable(url: string) {
   const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
@@ -175,7 +182,7 @@ function createWindowTexture(now: Date) {
   return texture
 }
 
-function HospitalWindow({ open = false }: { open?: boolean }) {
+function HospitalWindow({ open = false, targetAction, onAction }: { open?: boolean } & Pick<RoomSceneProps, 'targetAction' | 'onAction'>) {
   const [texture, setTexture] = useState(() => createWindowTexture(new Date()))
   const currentTexture = useRef(texture)
 
@@ -195,7 +202,8 @@ function HospitalWindow({ open = false }: { open?: boolean }) {
   }, [])
 
   return (
-    <group position={[-3.9, 3.15, -0.35]} rotation={[0, Math.PI / 2 + (open ? 0.35 : 0), 0]}>
+    <EditableTarget id="window" label="Окно" position={[-3.9, 3.15, -0.35]} hintScale={1} rotation={[0, Math.PI / 2 + (open ? 0.35 : 0), 0]}>
+      <SceneInteraction id="window" highlighted={targetAction === 'window'} onAction={onAction}><group>
       <mesh position={[0, 0, -0.025]}>
         <boxGeometry args={[2.2, 1.56, 0.12]} />
         <meshStandardMaterial color="#e5ebe8" roughness={0.72} />
@@ -220,7 +228,8 @@ function HospitalWindow({ open = false }: { open?: boolean }) {
         <boxGeometry args={[2.3, 0.12, 0.3]} />
         <meshStandardMaterial color="#f4f7f5" roughness={0.55} />
       </mesh>
-    </group>
+      </group></SceneInteraction>
+    </EditableTarget>
   )
 }
 
@@ -598,13 +607,18 @@ function TiledFloor({ bounds }: { bounds: THREE.Box3 }) {
   }, [source, size.x, size.z, gl])
   useEffect(() => () => texture.dispose(), [texture])
 
-  return <mesh name="TiledFloor" position={[center.x, bounds.max.y + 0.002, center.z]} rotation={[-Math.PI / 2, 0, 0]}>
-    <planeGeometry args={[size.x, size.z]} />
-    <meshStandardMaterial map={texture} roughness={0.8} />
-  </mesh>
+  return <EditableTarget id="floor" label="Пол" position={center.toArray()} hintScale={1}>
+    <EditorPulse id="floor"><group>
+      <mesh><boxGeometry args={[size.x, size.y, size.z]}/><meshStandardMaterial color="#c8ceca" roughness={0.9}/></mesh>
+      <mesh name="TiledFloor" position={[0, size.y / 2 + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[size.x, size.z]} />
+        <meshStandardMaterial map={texture} roughness={0.8} />
+      </mesh>
+    </group></EditorPulse>
+  </EditableTarget>
 }
 
-function TwoToneWall({ bounds, floorY }: { bounds: THREE.Box3; floorY: number }) {
+function TwoToneWall({ bounds, floorY, id }: { bounds: THREE.Box3; floorY: number; id: string }) {
   const center = bounds.getCenter(new THREE.Vector3())
   const size = bounds.getSize(new THREE.Vector3())
   const dividerY = THREE.MathUtils.clamp(floorY + 1.2, bounds.min.y, bounds.max.y)
@@ -615,12 +629,12 @@ function TwoToneWall({ bounds, floorY }: { bounds: THREE.Box3; floorY: number })
     { bottom: dividerY + trimHeight / 2, top: bounds.max.y, color: '#f3f0e9' },
   ]
 
-  return <group name="TwoToneWall">
-    {bands.map(({ bottom, top, color }) => <mesh key={color} position={[center.x, (bottom + top) / 2, center.z]}>
+  return <EditableTarget id={id} label={size.x < size.z ? 'Левая стена' : 'Задняя стена'} position={center.toArray()} hintScale={1}><EditorPulse id={id}><group name="TwoToneWall">
+    {bands.map(({ bottom, top, color }) => <mesh key={color} position={[0, (bottom + top) / 2 - center.y, 0]}>
       <boxGeometry args={[size.x, top - bottom, size.z]} />
       <meshStandardMaterial color={color} roughness={0.9} />
     </mesh>)}
-  </group>
+  </group></EditorPulse></EditableTarget>
 }
 
 function HospitalRoomAsset({
@@ -638,11 +652,13 @@ function HospitalRoomAsset({
   modelUrl,
 }: HospitalRoomModelProps & { modelUrl: string }) {
   const { scene } = useGLTF(modelUrl)
+  const editorOpen = useSceneEditor(s => s.open)
+  const editingBlanket = useSceneEditor(s => s.selected === 'blanket-on-patient')
   const patientScale = patientTransform.scale * PATIENT_REAL_WORLD_SCALE
   const [bedReady, setBedReady] = useState(false)
   const onBedReady = useCallback((ready: boolean) => setBedReady(ready), [])
   const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
-  const { model, scale, offset, floorBounds, wallBounds } = useMemo(() => {
+  const { model, scale, offset, floorBounds, wallBounds, importedObjects } = useMemo(() => {
     const model = scene.clone(true)
     model.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(model)
@@ -658,6 +674,7 @@ function HospitalRoomAsset({
       const slabSize = slab.getSize(new THREE.Vector3())
       if (slabSize.x > size.x * 0.8 && slabSize.z > size.z * 0.8 && slabSize.y < Math.max(size.x, size.z) * 0.05) {
         if (!floorBounds || slab.max.y < floorBounds.max.y) floorBounds = slab
+        object.visible = false
       }
       // Replace only the room's solid wall slabs; equipment keeps its materials.
       const thinWall = Math.min(slabSize.x, slabSize.z) < Math.max(size.x, size.z) * 0.05
@@ -677,7 +694,9 @@ function HospitalRoomAsset({
       wall.max.multiplyScalar(scale).add(offset)
     })
     if (bedReady) model.traverse(object => { if (object.name.includes('Hospital_Bed')) object.visible = false })
+    const importedObjects = splitRoomObjects(model)
     return {
+    importedObjects,
     model,
     scale,
     offset,
@@ -686,20 +705,23 @@ function HospitalRoomAsset({
     }
   }, [scene, bedReady])
 
+  useEffect(() => () => importedObjects.forEach(entry => entry.materials.forEach(material => material.dispose())), [importedObjects])
+
   return (
     <>
     <group position={offset} scale={scale}>
       <primitive object={model} />
+      {importedObjects.filter(entry => entry.id !== 'bed' || !bedReady).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1}>
+        <EditorPulse id={entry.id}><primitive object={entry.object}/></EditorPulse>
+      </EditableTarget>)}
     </group>
 
     {floorBounds && <TiledFloor bounds={floorBounds} />}
-    {wallBounds.map((bounds, index) => <TwoToneWall key={index} bounds={bounds} floorY={floorBounds?.max.y ?? 0} />)}
+    {wallBounds.map((bounds, index) => <TwoToneWall key={index} id={`wall-${index}`} bounds={bounds} floorY={floorBounds?.max.y ?? 0} />)}
 
-    <SceneInteraction id="window" highlighted={targetAction === 'window'} onAction={onAction}>
-      <HospitalWindow open={windowOpen} />
-    </SceneInteraction>
+    <HospitalWindow open={windowOpen} onAction={onAction} targetAction={targetAction} />
 
-    <group
+    <EditableTarget id="patient" label="Пациентка" hintScale={1}
       position={[
         -0.274 + patientTransform.x,
         1.3954 + patientTransform.y,
@@ -710,7 +732,7 @@ function HospitalRoomAsset({
       <SceneInteraction id={patientState?.breathing === false ? 'cpr' : 'patient'} highlighted={targetAction === 'patient' || targetAction === 'cpr'} onAction={onAction}>
       <AnimatedPatient patient={patientState ?? basePatient} clock={animationClock} fallback={patientState ? <ArticulatedPatient patient={patientState} clock={animationClock} showSupports={!bedReady}/> : <PatientVisual/>}/>
       </SceneInteraction>
-    </group>
+    </EditableTarget>
     <group
       position={[
         -0.274 + patientTransform.x,
@@ -718,25 +740,23 @@ function HospitalRoomAsset({
         -2.0613 + patientTransform.z,
       ]}
     >
-      {covered && (
-        <group
+        <EditableTarget id="blanket-on-patient" label="Одеяло на пациентке" visible={covered || (editorOpen && editingBlanket)}
           position={[blanketTransform.x, blanketTransform.y, blanketTransform.z + (blanketOff ? 0.9 : 0)]}
           scale={patientScale * blanketTransform.scale}
         >
-          <group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={false} /></group>
-        </group>
-      )}
+          <EditorPulse id="blanket-on-patient"><group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={false} /></group></EditorPulse>
+        </EditableTarget>
     </group>
 
     <AnimatedBed patient={patientState} clock={animationClock} onReady={onBedReady}/>
     <WallStorageShelf />
     <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
-    {doctorArrived && <group position={[2.9, 0, 1.5]}>
+    {(doctorArrived || editorOpen) && <EditableTarget id="doctor" label="Врач" position={[2.9, 0, 1.5]} hintScale={1}><EditorPulse id="doctor">
       <mesh position={[0, 1.1, 0]}><capsuleGeometry args={[0.24, 0.65, 6, 12]}/><meshStandardMaterial color="#f6fcfa"/></mesh>
       <mesh position={[0, 1.75, 0]}><sphereGeometry args={[0.18, 16, 12]}/><meshStandardMaterial color="#dcb297"/></mesh>
       {[-0.13, 0.13].map(x => <mesh key={x} position={[x, 0.43, 0]}><capsuleGeometry args={[0.08, 0.65, 4, 8]}/><meshStandardMaterial color="#537c7a"/></mesh>)}
       <Html position={[0, 2.1, 0]} center style={{ pointerEvents: 'none' }}><span className="scene-label">Врач в палате</span></Html>
-    </group>}
+    </EditorPulse></EditableTarget>}
     </>
   )
 }
@@ -778,6 +798,7 @@ function Room({
   actionAnchor,
   onActionPosition,
 }: RoomSceneProps) {
+  const editorOpen = useSceneEditor(s => s.open)
   return (
     <>
     <color attach="background" args={['#e9f1ef']} />
@@ -810,15 +831,16 @@ function Room({
       <OrbitControls
         makeDefault
         target={[0, 1.2, 0]}
-        minDistance={6.5}
-        maxDistance={13}
+        minDistance={0.5}
+        maxDistance={40}
         minPolarAngle={Math.PI / 4}
         maxPolarAngle={Math.PI / 2.05}
-        enablePan={false}
+        enablePan={editorOpen}
         minAzimuthAngle={-Math.PI / 2.5}
         maxAzimuthAngle={Math.PI / 2.5}
       />
     )}
+    <SceneEditorControls firstPerson={firstPerson} />
     </>
   )
 }
@@ -828,7 +850,7 @@ useGLTF.preload(ROOM_MODEL_URL)
 export default function RoomScene(props: RoomSceneProps) {
   return (
     <Canvas
-      camera={{ position: [7.2, 6.8, 8.5], fov: 36 }}
+      camera={INITIAL_CAMERA}
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: false }}
       tabIndex={0}
@@ -892,7 +914,7 @@ const SHELF_Z = -3.62
 const SHELF_TOP = 1.8
 const SHELF_LOWER = 1.0
 function WallStorageShelf() {
-  return <group name="wall-storage-shelf" position={[SHELF_X, 0, SHELF_Z]}>
+  return <EditableTarget id="shelf" label="Полка" position={[SHELF_X, 0, SHELF_Z]} hintScale={1.05}><EditorPulse id="shelf">
     {[SHELF_TOP, SHELF_LOWER].map(height => <group key={height}>
       <mesh position={[0, height - 0.04, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.64, 0.08, 0.66]}/>
@@ -913,7 +935,7 @@ function WallStorageShelf() {
         </mesh>
       </group>)}
     </group>)}
-  </group>
+  </EditorPulse></EditableTarget>
 }
 interface SceneObjectPlacement {
   id: ObjectId
@@ -944,35 +966,14 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
 }) {
   const ref = useRef<THREE.Group>(null)
   const [hovered, setHovered] = useState(false)
-  const [reducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-  const elapsed = useRef(0)
-  const cachedChild = useRef<THREE.Object3D | null>(null)
-  const highlight = useRef<ReturnType<typeof bindInteractionHighlight> | null>(null)
-  useEffect(() => () => highlight.current?.dispose(), [])
-  useFrame((_, delta) => {
-    const root = ref.current
-    if (!root) return
-    // Async GLB arrival replaces the first child. Discover materials only then,
-    // not on every pulse frame, and prepare shaders before their first draw.
-    const child = root.children[0] ?? null
-    if (child !== cachedChild.current) {
-      highlight.current?.dispose()
-      highlight.current = child ? bindInteractionHighlight(child) : null
-      cachedChild.current = child
-    }
-    if (!highlighted && !hovered) {
-      elapsed.current = 0
-      if (root.scale.x !== 1) root.scale.setScalar(1)
-      if (highlight.current) highlight.current.strength.value = 0
-      return
-    }
-    elapsed.current += delta
-    const pulse = reducedMotion ? 0.5 : (1 - Math.cos(elapsed.current * Math.PI * 2 / 1.6)) / 2
-    if (growth > 0) root.scale.setScalar(highlighted && !reducedMotion ? 1 + growth * pulse : 1)
-    if (highlight.current) highlight.current.strength.value = highlighted ? 0.3 + 0.65 * pulse : 0.25
-  })
+  const editor = useSceneEditor(s => s.open)
+  const editorId = id === 'cpr' ? 'patient' : id
+  const preview = useSceneEditor(s => s.open && s.preview && s.selected === editorId)
+  const color = useSceneEditor(s => s.settings.objects[editorId]?.hintColor ?? s.settings.hintColor)
+  const maxScale = useSceneEditor(s => s.settings.objects[editorId]?.hintScale ?? 1 + growth)
+  useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' ? 0 : maxScale - 1, color)
   return <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
-    onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
+    onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (useSceneEditor.getState().open) { selectEditorSceneObject(editorId); return }; if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
     onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}
     onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
     {children}
@@ -982,15 +983,16 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
 function EmergencyObject({ object, highlighted, onAction }: { object: SceneObjectPlacement; highlighted: boolean; onAction: RoomSceneProps['onAction'] }) {
   const hitbox = object.hitbox ?? [0.36, 0.4, 0.25]
   const growth = object.id === 'call-bell' ? 0.5 : Math.min(0.5, 0.12 / Math.max(...hitbox))
-  return <group position={object.position} rotation={object.rotation}>
+  return <EditableTarget id={object.id} label={objectLabels[object.id]} position={object.position} rotation={object.rotation} hintScale={1 + growth}>
     <SceneInteraction id={object.id} highlighted={highlighted} growth={growth} onAction={onAction}>
       <ObjectVisual id={object.id} color={object.color}/>
     </SceneInteraction>
-  </group>
+  </EditableTarget>
 }
 function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, patientState }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
+  const editorOpen = useSceneEditor(s => s.open)
   return <>
-    {sceneObjects.filter(o => patientState?.breathing !== false || o.id === 'call-bell').map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => editorOpen || patientState?.breathing !== false || o.id === 'call-bell').map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }
@@ -1003,7 +1005,12 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
     const ray = rayRef.current
     ray.setFromCamera(new THREE.Vector2(0, 0), camera)
     ray.far = Infinity
-    const hit = ray.intersectObjects(scene.children, true).find(hit => hit.object.visible && hit.object instanceof THREE.Mesh)
+    const hit = ray.intersectObjects(scene.children, true).find(hit => {
+      if (!(hit.object instanceof THREE.Mesh)) return false
+      let node: THREE.Object3D | null = hit.object
+      while (node) { if (!node.visible) return false; node = node.parent }
+      return true
+    })
     let object: THREE.Object3D | null = hit?.object ?? null
     hitPoint.current = hit?.point.toArray()
     const previousTarget = target.current

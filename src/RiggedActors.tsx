@@ -8,6 +8,7 @@ import { BED_BONES, bedAngles, patientMorphs, patientPose, validatePatientRig, t
 import { applyRigMorphs, applyRigSkin, bindRigClips, cleanRigClothing, cloneRigMaterials, mergeRigClips, rigInventory } from './rigAssets'
 import { CompressionPlayback, RigPlayback } from './rigPlayback'
 import type { PatientState } from './simulation'
+import { EditableTarget, EditorPulse } from './SceneEditor3D'
 import { installPatientPicking } from './patientPicking'
 
 const ROOT = import.meta.env.BASE_URL
@@ -145,7 +146,7 @@ function BedRig({ patient, clock, onReady }: { patient?: PatientState; clock: An
     }
     setPillowVisibility(prepared.pillow, pose !== 'legs_elevated' && pose !== 'arrest')
   })
-  return <group position={[-0.274, 1.3954, -2.0613]}><primitive object={prepared.object} dispose={null}/></group>
+  return <EditableTarget id="bed" label="Кровать" position={[-0.274, 1.3954, -2.0613]} hintScale={1}><EditorPulse id="bed"><primitive object={prepared.object} dispose={null}/></EditorPulse></EditableTarget>
 }
 
 function setPillowVisibility(pillow: THREE.Object3D | undefined, visible: boolean) { if (pillow) pillow.visible = visible }

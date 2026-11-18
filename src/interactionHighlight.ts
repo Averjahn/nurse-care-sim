@@ -39,5 +39,5 @@ export function bindInteractionHighlight(root: Object3D) {
       })
     }
   })
-  return { strength, materialCount: seen.size, dispose: () => restorers.forEach(restore => restore()) }
+  return { strength, tint, materialCount: seen.size, dispose: () => restorers.forEach(restore => restore()) }
 }

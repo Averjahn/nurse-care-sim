@@ -1,9 +1,9 @@
-import { Edges, Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei'
+import { Html, OrbitControls, useGLTF, useTexture } from '@react-three/drei'
 import { Canvas, type ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as THREE from 'three'
-import { scenario, objectLabels, type ObjectId } from './scenario'
-import { basePatient, consciousnessLabels, type PatientState } from './simulation'
+import { objectLabels, type ObjectId } from './scenario'
+import { basePatient, type PatientState } from './simulation'
 import { AnimatedBed, AnimatedPatient } from './RiggedActors'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -44,8 +44,7 @@ const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/gradd-hospital-room.gl
 const GENERATED_ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/hospital-room-generated.glb`
 const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb?v=2`
 const PATIENT_REAL_WORLD_SCALE = 1
-const PATIENT_PANEL_WIDTH = 2.68
-const PATIENT_PANEL_SHIFT_X = PATIENT_PANEL_WIDTH * 0.15
+const STORAGE_SHELF_X = 2.902
 const FIRST_PERSON_EYE_HEIGHT = 3.4
 const ACTION_HIGHLIGHT_COLOR = '#ffd54a'
 
@@ -217,80 +216,6 @@ function HospitalWindow({ open = false }: { open?: boolean }) {
       <mesh position={[0, -0.83, 0.035]} castShadow>
         <boxGeometry args={[2.3, 0.12, 0.3]} />
         <meshStandardMaterial color="#f4f7f5" roughness={0.55} />
-      </mesh>
-    </group>
-  )
-}
-
-function PatientWallPanel({ onAction, targetAction, patientState }: Pick<RoomSceneProps, 'onAction' | 'targetAction' | 'patientState'>) {
-  const consciousness = patientState?.consciousness
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 900
-    canvas.height = 480
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Не удалось создать графический контекст для стенового экрана пациента.')
-
-    context.fillStyle = '#f8fbfa'
-    context.fillRect(0, 0, canvas.width, canvas.height)
-    context.fillStyle = '#397e76'
-    context.fillRect(0, 0, canvas.width, 82)
-    context.fillStyle = '#c9e6de'
-    context.font = '600 28px "DM Sans", sans-serif'
-    context.fillText('ПАЦИЕНТ · ПАЛАТА 204', 36, 51)
-    context.fillStyle = '#294f49'
-    context.font = '700 42px "DM Sans", sans-serif'
-    context.fillText(`${scenario.patient.name} · ${scenario.patient.age} лет`, 36, 145)
-    context.fillStyle = '#718681'
-    context.font = '500 27px "DM Sans", sans-serif'
-    context.fillText(consciousness ? 'Экстренный эпизод · требуется оценка' : 'Готовность к учебному эпизоду', 36, 187)
-    context.fillText(consciousness ? `Сознание: ${consciousnessLabels[consciousness]}` : 'Мария Андреевна · учебные данные', 36, 222)
-    context.fillStyle = '#e9f2ef'
-    context.beginPath()
-    context.roundRect(32, 258, 836, 124, 16)
-    context.fill()
-
-    scenario.patient.vitals.forEach((vital, index) => {
-      const left = 52 + index * 164
-      context.fillStyle = '#81938e'
-      context.font = '600 23px "DM Sans", sans-serif'
-      context.fillText(vital.label, left, 294)
-      context.fillStyle = '#294f49'
-      context.font = '700 36px "DM Sans", sans-serif'
-      context.fillText(vital.value, left, 337)
-      context.fillStyle = '#718681'
-      context.font = '500 19px "DM Sans", sans-serif'
-      context.fillText(vital.unit, left, 364)
-    })
-    context.fillStyle = '#63877f'
-    context.font = '600 20px "DM Sans", sans-serif'
-    context.fillText('ИСХОДНЫЕ ПОКАЗАТЕЛИ · ТЕКУЩИЕ НУЖНО ИЗМЕРИТЬ', 36, 432)
-
-    const map = new THREE.CanvasTexture(canvas)
-    map.colorSpace = THREE.SRGBColorSpace
-    return map
-  }, [consciousness])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  return (
-    <group position={[2.5 + PATIENT_PANEL_SHIFT_X, 3, -3.95]}>
-      <mesh position={[0, 0, -0.035]}>
-        <boxGeometry args={[PATIENT_PANEL_WIDTH, 1.52, 0.07]} />
-        <meshStandardMaterial
-          color={targetAction === 'chart' ? ACTION_HIGHLIGHT_COLOR : '#45615c'}
-          emissive={targetAction === 'chart' ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={targetAction === 'chart' ? 0.7 : 0}
-          roughness={0.45}
-        />
-      </mesh>
-      <mesh position={[0, 0, 0.015]}
-        onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction('chart') }}
-        onPointerOver={() => { document.body.style.cursor = 'pointer' }}
-        onPointerOut={() => { document.body.style.cursor = 'auto' }}
-      >
-        <planeGeometry args={[2.58, 1.43]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
       </mesh>
     </group>
   )
@@ -767,7 +692,9 @@ function HospitalRoomAsset({
     {floorBounds && <TiledFloor bounds={floorBounds} />}
     {wallBounds.map((bounds, index) => <TwoToneWall key={index} bounds={bounds} floorY={floorBounds?.max.y ?? 0} />)}
 
-    <HospitalWindow open={windowOpen} />
+    <SceneInteraction id="window" highlighted={targetAction === 'window'} onAction={onAction}>
+      <HospitalWindow open={windowOpen} />
+    </SceneInteraction>
 
     <group
       position={[
@@ -777,7 +704,9 @@ function HospitalRoomAsset({
       ]}
       scale={patientScale}
     >
+      <SceneInteraction id={patientState?.breathing === false ? 'cpr' : 'patient'} highlighted={targetAction === 'patient' || targetAction === 'cpr'} onAction={onAction}>
       <AnimatedPatient patient={patientState ?? basePatient} clock={animationClock} fallback={patientState ? <ArticulatedPatient patient={patientState} clock={animationClock} showSupports={!bedReady}/> : <PatientVisual/>}/>
+      </SceneInteraction>
     </group>
     <group
       position={[
@@ -786,19 +715,18 @@ function HospitalRoomAsset({
         -2.0613 + patientTransform.z,
       ]}
     >
-      {(covered || targetAction === 'blanket') && (
+      {covered && (
         <group
           position={[blanketTransform.x, blanketTransform.y, blanketTransform.z + (blanketOff ? 0.9 : 0)]}
           scale={patientScale * blanketTransform.scale}
         >
-          <group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={targetAction === 'blanket' && !covered} /></group>
+          <group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={false} /></group>
         </group>
       )}
     </group>
 
     <AnimatedBed patient={patientState} clock={animationClock} onReady={onBedReady}/>
     <WallStorageShelf />
-    <PatientWallPanel onAction={onAction} targetAction={targetAction} patientState={patientState} />
     <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
     {doctorArrived && <group position={[2.9, 0, 1.5]}>
       <mesh position={[0, 1.1, 0]}><capsuleGeometry args={[0.24, 0.65, 6, 12]}/><meshStandardMaterial color="#f6fcfa"/></mesh>
@@ -934,7 +862,7 @@ function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: 
 
 // Shelf heights are the upper surfaces; item origins include their geometry's
 // bottom offset so that moving a shelf never leaves its contents suspended.
-const SHELF_X = 2.5 + PATIENT_PANEL_SHIFT_X
+const SHELF_X = STORAGE_SHELF_X
 const SHELF_Z = -3.62
 const SHELF_TOP = 1.8
 const SHELF_LOWER = 1.0
@@ -970,50 +898,89 @@ interface SceneObjectPlacement {
   color: string
 }
 const sceneObjects: SceneObjectPlacement[] = [
-  { id: 'patient', position: [-0.35, 2, -2.25], hitbox: [0.48, 0.18, 0.6], color: '#6e9f95' },
   // The original GLB's right rails are at x=0.783–0.832, y=0.905–1.694.
   { id: 'bed-controls', position: [0.88, 1.23, -1.12], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
   { id: 'call-bell', position: [0.88, 1.54, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
   { id: 'monitor', position: [2.5, SHELF_TOP + 0.09, SHELF_Z], color: '#4b918d' },
-  { id: 'chart', position: [SHELF_X, 3, -3.86], hitbox: [2.58, 1.43, 0.12], color: '#809c83' },
+  { id: 'chart', position: [3.7, SHELF_LOWER + 0.026, SHELF_Z], rotation: [-Math.PI / 2, 0, 0], hitbox: [0.32, 0.44, 0.06], color: '#809c83' },
   { id: 'medications', position: [1.98, SHELF_TOP + 0.075, SHELF_Z], color: '#b57e60' },
   { id: 'oxygen', position: [1.9, SHELF_LOWER + 0.475, SHELF_Z], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
-  { id: 'window', position: [-3.77, 3.15, -0.35], rotation: [0, Math.PI / 2, 0], hitbox: [1.92, 1.26, 0.15], color: '#82abb8' },
   { id: 'blanket', position: [2.48, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
   { id: 'heater', position: [3.48, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
-  { id: 'sink', position: [-2.8, 1.8, 1.7], color: '#a3beb9' },
+  { id: 'sink', position: [-3.75, 1.15, 1.7], rotation: [0, Math.PI / 2, 0], color: '#a3beb9' },
   { id: 'injection', position: [3.89, SHELF_TOP + 0.06, SHELF_Z], rotation: [0, 0, Math.PI / 2], hitbox: [0.15, 0.5, 0.15], color: '#719dac' },
   { id: 'linen', position: [3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
   { id: 'equipment', position: [3.03, SHELF_TOP + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
-  { id: 'cpr', position: [-0.3, 1.9, -2.3], hitbox: [0.48, 0.18, 0.6], color: '#c75b56' },
 ]
-function EmergencyObject({ object, highlighted, onAction }: { object: typeof sceneObjects[number]; highlighted: boolean; onAction: RoomSceneProps['onAction'] }) {
+/** Pulse the actual mesh materials, never a proxy box. All materials here
+ * belong to the mounted scene instance (patient materials are cloned on load). */
+function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
+  id: ObjectId; highlighted: boolean; growth?: number; onAction: RoomSceneProps['onAction']; children: ReactNode
+}) {
+  const ref = useRef<THREE.Group>(null)
   const [hovered, setHovered] = useState(false)
-  const color = hovered || highlighted ? ACTION_HIGHLIGHT_COLOR : object.color
+  const [reducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const elapsed = useRef(0)
+  const originals = useRef(new Map<THREE.Material, { color: THREE.Color; emissive?: THREE.Color; intensity?: number }>())
+  const yellow = useMemo(() => new THREE.Color(ACTION_HIGHLIGHT_COLOR), [])
+  const restore = useCallback(() => {
+    originals.current.forEach((base, material) => {
+      if (material instanceof THREE.MeshStandardMaterial) {
+        material.color.copy(base.color)
+        material.emissive.copy(base.emissive!)
+        material.emissiveIntensity = base.intensity!
+      } else if (material instanceof THREE.MeshBasicMaterial) material.color.copy(base.color)
+    })
+    originals.current.clear()
+  }, [])
+  useEffect(() => restore, [restore])
+  useFrame((_, delta) => {
+    if (!ref.current) return
+    if (!highlighted && !hovered) { elapsed.current = 0; ref.current.scale.setScalar(1); restore(); return }
+    elapsed.current += delta
+    const pulse = reducedMotion ? 0.5 : (1 - Math.cos(elapsed.current * Math.PI * 2 / 1.6)) / 2
+    ref.current.scale.setScalar(highlighted && !reducedMotion ? 1 + growth * pulse : 1)
+    ref.current.traverse(node => {
+      if (!(node instanceof THREE.Mesh)) return
+      for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+        if (!(material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshBasicMaterial)) continue
+        if (!originals.current.has(material)) originals.current.set(material, {
+          color: material.color.clone(),
+          ...(material instanceof THREE.MeshStandardMaterial ? { emissive: material.emissive.clone(), intensity: material.emissiveIntensity } : {}),
+        })
+        if (material instanceof THREE.MeshStandardMaterial) {
+          material.emissive.copy(yellow)
+          material.emissiveIntensity = highlighted ? 0.12 + 0.65 * pulse : 0.18
+        } else material.color.copy(originals.current.get(material)!.color).lerp(yellow, highlighted ? 0.12 + 0.25 * pulse : 0.12)
+      }
+    })
+  })
+  return <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
+    onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id) }}
+    onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}
+    onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
+    {children}
+    {hovered && !document.pointerLockElement && <Html position={[0, 0.28, 0]} center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}><span className="scene-label">{objectLabels[id]}</span></Html>}
+  </group>
+}
+function EmergencyObject({ object, highlighted, onAction }: { object: SceneObjectPlacement; highlighted: boolean; onAction: RoomSceneProps['onAction'] }) {
   const hitbox = object.hitbox ?? [0.36, 0.4, 0.25]
-  return <group position={object.position} rotation={object.rotation} userData={{ emergencyObject: object.id }}>
-    <mesh onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(object.id) }} onPointerOver={() => { setHovered(true); document.body.style.cursor = 'pointer' }} onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
-      <boxGeometry args={hitbox}/>
-      <meshBasicMaterial color={color} transparent opacity={hovered || highlighted ? 0.1 : 0} depthWrite={false}/>
-      {(hovered || highlighted) && <Edges color={ACTION_HIGHLIGHT_COLOR} raycast={() => {}}/>}
-    </mesh>
-    <mesh visible={false} userData={{ centerOutline: true }} raycast={() => {}}>
-      <boxGeometry args={[hitbox[0] + 0.02, hitbox[1] + 0.02, hitbox[2] + 0.02]}/><meshBasicMaterial visible={false}/><Edges color={ACTION_HIGHLIGHT_COLOR} raycast={() => {}}/>
-    </mesh>
-    <ObjectVisual id={object.id} color={object.color}/>
-    {(hovered || highlighted) && <Html position={[0, 0.25, 0]} center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}><span className="scene-label">{objectLabels[object.id]}</span></Html>}
+  const growth = object.id === 'call-bell' ? 0.5 : Math.min(0.5, 0.12 / Math.max(...hitbox))
+  return <group position={object.position} rotation={object.rotation}>
+    <SceneInteraction id={object.id} highlighted={highlighted} growth={growth} onAction={onAction}>
+      <ObjectVisual id={object.id} color={object.color}/>
+    </SceneInteraction>
   </group>
 }
 function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, patientState }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
   return <>
-    {sceneObjects.filter(o => o.id === 'cpr' ? patientState?.breathing === false : o.id !== 'patient' || patientState?.breathing !== false).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => patientState?.breathing !== false || o.id === 'call-bell').map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }
 function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'onAction' | 'onFocusObject'>) {
   const { camera, scene, gl } = useThree()
   const target = useRef<ObjectId | null>(null)
-  const outlined = useRef<THREE.Mesh | null>(null)
   const rayRef = useRef(new THREE.Raycaster())
   useFrame(() => {
     const ray = rayRef.current
@@ -1026,12 +993,6 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
     while (object) {
       if (object.userData.emergencyObject) { target.current = object.userData.emergencyObject as ObjectId; break }
       object = object.parent
-    }
-    if (outlined.current) outlined.current.visible = false
-    outlined.current = null
-    if (object && target.current) {
-      const outline = object.children.find(child => child.userData.centerOutline) as THREE.Mesh | undefined
-      if (outline) { outline.visible = true; outlined.current = outline }
     }
     if (previousTarget !== target.current) onFocusObject?.(target.current)
   })
@@ -1046,7 +1007,19 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
 }
 
 function ObjectVisual({ id, color }: { id: ObjectId; color: string }) {
-  if (['patient', 'cpr', 'window', 'chart', 'sink'].includes(id)) return null
+  if (id === 'chart') return <group>
+    <mesh><boxGeometry args={[0.3, 0.42, 0.035]}/><meshStandardMaterial color="#6e8b89"/></mesh>
+    <mesh position={[0, -0.01, 0.02]}><boxGeometry args={[0.26, 0.35, 0.008]}/><meshStandardMaterial color="#faf9ee"/></mesh>
+    <mesh position={[0, 0.18, 0.028]}><boxGeometry args={[0.11, 0.045, 0.018]}/><meshStandardMaterial color="#81938b" metalness={0.4}/></mesh>
+    {[-0.1, -0.04, 0.02, 0.08].map(y => <mesh key={y} position={[0, y, 0.026]}><boxGeometry args={[0.2, 0.006, 0.002]}/><meshStandardMaterial color="#a8bab3"/></mesh>)}
+  </group>
+  if (id === 'sink') return <group>
+    <mesh position={[0, -0.35, 0]}><boxGeometry args={[0.55, 0.6, 0.4]}/><meshStandardMaterial color="#d6e1dc"/></mesh>
+    <mesh scale={[1, 0.26, 0.8]}><sphereGeometry args={[0.36, 24, 16]}/><meshStandardMaterial color="#f3f6f1" roughness={0.35}/></mesh>
+    <mesh position={[0, 0.13, -0.22]}><cylinderGeometry args={[0.025, 0.025, 0.24, 12]}/><meshStandardMaterial color="#8da6a2" metalness={0.65}/></mesh>
+    <mesh position={[0, 0.25, -0.15]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.025, 0.025, 0.17, 12]}/><meshStandardMaterial color="#8da6a2" metalness={0.65}/></mesh>
+  </group>
+  if (['patient', 'cpr', 'window'].includes(id)) return null
   if (id === 'call-bell' || id === 'bed-controls') return <group>
     <mesh position={[0, 0, -0.065]}><boxGeometry args={[0.17, 0.19, 0.08]}/><meshStandardMaterial color="#8da7a0" metalness={0.25}/></mesh>
     <mesh><boxGeometry args={id === 'bed-controls' ? [0.24, 0.15, 0.06] : [0.16, 0.26, 0.06]}/><meshStandardMaterial color="#f0f5ef"/></mesh>

@@ -64,6 +64,7 @@ try {
   await evaluate('window.__initialCamera=window.__threeStore.getState().camera')
   assert.equal(await evaluate(`(()=>{const visible=[];window.__threeStore.getState().scene.traverse(o=>{if(o.name.startsWith('editable-imported-')&&o.visible)visible.push(o.name)});return visible.length})()`),0,'Unused decorative equipment stays hidden during simulation')
   assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName("editable-bed").visible'),true,'Functional bed remains visible')
+  assert.ok(await evaluate(`(()=>{const T=window.__THREE,scene=window.__threeStore.getState().scene,windowActor=scene.getObjectByName('editable-window'),wall=scene.getObjectByName('editable-wall-0');const p=windowActor.getWorldPosition(new T.Vector3());const ray=new T.Raycaster(p.clone().add(new T.Vector3(1,0,.3)),new T.Vector3(-1,0,0));const empty=ray.intersectObject(wall,true).length===0;ray.ray.origin.z=p.z+1.2;const solid=ray.intersectObject(wall,true).length>0;const frame=new T.Box3().setFromObject(scene.getObjectByName('window-frame-jamb-1')),wallBox=new T.Box3().setFromObject(wall);return empty&&solid&&Math.abs(frame.max.x-wallBox.max.x)<.02&&!scene.getObjectByName('interaction-window')})()`),'Window sits in a through-opening and has no simulation interaction')
   await shot('01-minimal-desktop')
   const select = async id => {
     if(await evaluate(`Boolean(document.querySelector('[aria-label="Закрыть действия"]'))`)) await click('[aria-label="Закрыть действия"]','')

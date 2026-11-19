@@ -10,8 +10,8 @@ function NumberField({ label, value, onChange, step = 0.01, min = -100, max = 10
     onFocus={() => { setDraft(String(Number(value.toFixed(3)))); setEditing(true) }}
     onChange={e => { setDraft(e.target.value); const n = e.target.valueAsNumber; if (Number.isFinite(n) && n >= min && n <= max) onChange(n) }} onBlur={() => setEditing(false)} />{suffix && <small>{suffix}</small>}</div></label>
 }
-function VectorFields({ label, value, onChange }: { label: string; value: Vec3; onChange: (point: Vec3) => void }) {
-  return <div className="editor-vector">{(['X', 'Y', 'Z'] as const).map((axis, i) => <NumberField key={axis} shortLabel={axis} label={`${label} · ${axis}`} value={value[i]} suffix="м" onChange={n => { const point: Vec3 = [...value]; point[i] = n; onChange(point) }} />)}</div>
+function VectorFields({ label, value, onChange, lockedX = false }: { label: string; value: Vec3; onChange: (point: Vec3) => void; lockedX?: boolean }) {
+  return <div className="editor-vector">{(['X', 'Y', 'Z'] as const).map((axis, i) => axis === 'X' && lockedX ? <div key={axis} className="editor-number"><span>X</span><div style={{ minHeight: 36 }}><small>В стене</small></div></div> : <NumberField key={axis} shortLabel={axis} label={`${label} · ${axis}`} value={value[i]} suffix="м" onChange={n => { const point: Vec3 = [...value]; point[i] = n; onChange(point) }} />)}</div>
 }
 export default function SceneEditor() {
   const state = useSceneEditor()
@@ -42,14 +42,14 @@ export default function SceneEditor() {
           <label className="editor-label">Объект<select aria-label="Объект сцены" value={target ? state.selected : ''} onChange={e => state.select(e.target.value)}><option value="" disabled>Выберите объект в сцене</option>{Object.values(state.targets).sort((a, b) => a.label.localeCompare(b.label, 'ru')).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
           {target ? <>
             {target.id.startsWith('imported-') && <p className="editor-help">Декоративный объект — скрыт в учебном режиме.</p>}
-            <section><div className="editor-section-heading"><h2>Положение</h2><span>метры</span></div><VectorFields label="Положение" value={object.position ?? target.position} onChange={position => state.updateObject(target.id, { position }, 'position')} /><p className="editor-help">X — влево/вправо, Y — высота, Z — вперёд/назад.</p></section>
+            <section><div className="editor-section-heading"><h2>Положение</h2><span>метры</span></div><VectorFields label="Положение" lockedX={target.id === 'window'} value={object.position ?? target.position} onChange={position => state.updateObject(target.id, { position }, 'position')} /><p className="editor-help">{target.id === 'window' ? 'Y — высота, Z — вдоль стены. Окно закреплено в проёме.' : 'X — влево/вправо, Y — высота, Z — вперёд/назад.'}</p></section>
             <section><div className="editor-section-heading"><h2>Размер</h2><NumberField label="Размер объекта" value={(object.scale ?? 1) * 100} min={5} max={500} step={1} suffix="%" onChange={n => state.updateObject(target.id, { scale: n / 100 })}/></div><input aria-label="Размер объекта ползунок" type="range" min="5" max="500" step="1" value={(object.scale ?? 1) * 100} onChange={e => state.updateObject(target.id, { scale: Number(e.target.value) / 100 })}/><p className="editor-help">100% — исходный размер. Пропорции сохраняются.</p></section>
-            <section><div className="editor-section-heading"><h2>Мигание</h2><label className="editor-switch"><input type="checkbox" checked={state.preview} onChange={e => state.setPreview(e.target.checked)}/> Предпросмотр</label></div>
+            {target.id !== 'window' && <section><div className="editor-section-heading"><h2>Мигание</h2><label className="editor-switch"><input type="checkbox" checked={state.preview} onChange={e => state.setPreview(e.target.checked)}/> Предпросмотр</label></div>
               <label className="editor-color">Цвет этого объекта<input aria-label="Цвет мигания объекта" type="color" value={color} onChange={e => state.updateObject(target.id, { hintColor: e.target.value })}/><code>{color.toUpperCase()}</code></label>
               <div className="editor-section-heading"><label htmlFor="editor-hint-scale">Максимальное увеличение</label><strong>{maxScale.toFixed(2)}×</strong></div><input id="editor-hint-scale" type="range" min="1" max="3" step="0.05" disabled={target.id === 'patient'} value={maxScale} onChange={e => state.updateObject(target.id, { hintScale: Number(e.target.value) })}/>
               <p className="editor-help">{target.id === 'patient' ? 'Пациентка мигает без изменения размера.' : '1× — только цвет, без увеличения объекта.'}</p>
               <details className="editor-details"><summary>Общий цвет подсказок</summary><label className="editor-color">Для всех объектов<input aria-label="Общий цвет мигания" type="color" value={state.settings.hintColor} onChange={e => state.setHintColor(e.target.value)}/></label><button className="editor-text" onClick={() => state.updateObject(target.id, { hintColor: undefined, hintScale: undefined })}>Вернуть этому объекту общие настройки</button></details>
-            </section>
+            </section>}
             <button className="editor-secondary" onClick={() => state.resetObject(target.id)}><RotateCcw size={14}/> Сбросить этот объект</button>
           </> : <p className="editor-help">Объекты появятся в списке после загрузки 3D-сцены.</p>}
         </> : <>

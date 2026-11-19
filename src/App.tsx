@@ -258,7 +258,7 @@ function App() {
       actionAnchor={actionAnchor} onActionPosition={positionActionPanel}
       targetAction={!editorOpen && !selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
       animationClock={{ speed: attempt?.speed ?? 1, paused: editorOpen || (attempt?.paused ?? false), compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
-      patientState={attempt?.patient} doctorArrived={attempt?.doctorArrived || attempt?.teamArrived} windowOpen={attempt?.completed.includes('air')}
+      patientState={attempt?.patient} doctorArrived={attempt?.doctorArrived || attempt?.teamArrived}
     /></section>
     {attempt && !editorOpen && <header className="emergency-header">
       <button className="hud-button glass-panel menu-button" onClick={backToMenu}><ArrowLeft size={17}/> Выйти в меню</button>

@@ -125,6 +125,11 @@ try {
   // Blankets remain selectable in the list while hidden during normal care.
   await input('[aria-label="Объект сцены"]','blanket-on-patient')
   await wait('window.__editor.getState().targets["blanket-on-patient"].object.visible','Editing reveals hidden blanket')
+  await input('[aria-label="Объект сцены"]','window')
+  assert.equal(await evaluate(`document.querySelector('[aria-label="Положение · X"]')===null`),true,'Window normal axis is locked')
+  await input('[aria-label="Положение · Y"]',3)
+  await input('[aria-label="Положение · Z"]',0.1)
+  await wait(`(()=>{const s=window.__editor.getState(),T=window.__T,p=s.targets.window.object.getWorldPosition(new T.Vector3()),wall=s.targets['wall-0'].object.getWorldPosition(new T.Vector3());return Math.abs(p.y-3)<.001&&Math.abs(p.z-.1)<.001&&Math.abs(p.x-wall.x)<.001})()`,'Editor keeps window embedded when moving it')
   await send('Page.reload')
   await wait('document.querySelectorAll(".case-card").length===6','reload returns to normal menu')
   await initialize();assert.equal(await evaluate('window.__editor.getState().open'),false)

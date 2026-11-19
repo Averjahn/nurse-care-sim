@@ -10,6 +10,8 @@ import { EditableTarget, EditorPulse, SceneEditorControls } from './SceneEditor3
 import { splitRoomObjects } from './importedRoomObjects'
 import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
 import { useObjectHighlight } from './useObjectHighlight'
+import HospitalWindow from './HospitalWindow'
+import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
 export type SceneAction = ObjectId
@@ -32,7 +34,6 @@ interface RoomSceneProps {
   patientState?: PatientState
   animationClock?: AnimationClock
   doctorArrived?: boolean
-  windowOpen?: boolean
   covered: boolean
   firstPerson: boolean
   firstPersonCameraHeight: number
@@ -65,172 +66,6 @@ async function isGlbAvailable(url: string) {
 
   const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase()
   return contentType === 'model/gltf-binary' || contentType === 'application/octet-stream'
-}
-
-function drawWindowView(canvas: HTMLCanvasElement, now: Date) {
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Не удалось создать графический контекст вида из окна.')
-
-  const width = canvas.width
-  const height = canvas.height
-  const hour = now.getHours() + now.getMinutes() / 60
-  const isNight = hour < 5.5 || hour >= 20.5
-  const isTwilight = !isNight && (hour < 7 || hour >= 18.5)
-  const sky = isNight
-    ? ['#101d35', '#435976']
-    : isTwilight
-      ? ['#d58f79', '#f0c7a2']
-      : ['#75b9d1', '#d2e8e7']
-  const gradient = context.createLinearGradient(0, 0, 0, height)
-  gradient.addColorStop(0, sky[0])
-  gradient.addColorStop(0.7, sky[1])
-  gradient.addColorStop(1, isNight ? '#788497' : '#e5d7bd')
-  context.fillStyle = gradient
-  context.fillRect(0, 0, width, height)
-
-  const horizon = height * 0.64
-  if (isNight) {
-    context.fillStyle = '#f2e8c9'
-    context.beginPath()
-    context.arc(width * 0.74, height * 0.2, 39, 0, Math.PI * 2)
-    context.fill()
-    context.fillStyle = '#718199'
-    context.beginPath()
-    context.arc(width * 0.76, height * 0.18, 35, 0, Math.PI * 2)
-    context.fill()
-    context.fillStyle = 'rgba(255,255,255,0.72)'
-    for (let index = 0; index < 34; index += 1) {
-      const x = (index * 167 + 41) % width
-      const y = (index * 83 + 29) % Math.floor(horizon * 0.78)
-      context.fillRect(x, y, 3, 3)
-    }
-  } else {
-    const daylight = Math.max(0, Math.min(1, (hour - 6) / 12))
-    const sunX = width * (0.12 + daylight * 0.76)
-    const sunY = height * (0.43 - Math.sin(daylight * Math.PI) * 0.26)
-    context.fillStyle = isTwilight ? '#ffd39a' : '#fff4c2'
-    context.beginPath()
-    context.arc(sunX, sunY, 42, 0, Math.PI * 2)
-    context.fill()
-    context.fillStyle = 'rgba(255,255,255,0.28)'
-    for (const [x, y, radius] of [[0.2, 0.25, 30], [0.48, 0.16, 24], [0.88, 0.33, 28]]) {
-      context.beginPath()
-      context.arc(width * x, height * y, radius, 0, Math.PI * 2)
-      context.arc(width * x + 34, height * y - 10, radius * 0.8, 0, Math.PI * 2)
-      context.arc(width * x + 63, height * y, radius * 0.65, 0, Math.PI * 2)
-      context.fill()
-    }
-  }
-
-  context.fillStyle = isNight ? '#39495b' : '#829b8f'
-  context.fillRect(0, horizon, width, height - horizon)
-  const buildings = [
-    [0.02, 0.2, 0.23], [0.14, 0.16, 0.35], [0.27, 0.2, 0.27],
-    [0.42, 0.18, 0.42], [0.57, 0.16, 0.29], [0.69, 0.2, 0.38],
-    [0.85, 0.18, 0.3],
-  ]
-  buildings.forEach(([left, buildingWidth, buildingHeight], buildingIndex) => {
-    const x = width * left
-    const top = horizon - height * buildingHeight
-    const buildingPixelWidth = width * buildingWidth
-    context.fillStyle = isNight
-      ? ['#26364b', '#304158', '#233147'][buildingIndex % 3]
-      : ['#aebcb7', '#c4c9c1', '#97aaa5'][buildingIndex % 3]
-    context.fillRect(x, top, buildingPixelWidth, height - top)
-    context.fillStyle = isNight ? '#f0c879' : '#d9e7df'
-    const columns = Math.max(2, Math.floor(buildingPixelWidth / 38))
-    const rows = Math.max(2, Math.floor((height - top) / 32))
-    for (let column = 0; column < columns; column += 1) {
-      for (let row = 0; row < rows; row += 1) {
-        if (isNight && (column + row + buildingIndex) % 3 === 0) continue
-        context.fillRect(x + 13 + column * 31, top + 14 + row * 28, 10, 12)
-      }
-    }
-  })
-
-  context.fillStyle = 'rgba(34, 55, 53, 0.76)'
-  for (const x of [width * 0.08, width * 0.38, width * 0.91]) {
-    context.fillRect(x - 5, horizon - 72, 10, 100)
-    context.beginPath()
-    context.arc(x, horizon - 76, 35, 0, Math.PI * 2)
-    context.fill()
-  }
-
-  context.fillStyle = 'rgba(28, 49, 48, 0.84)'
-  context.beginPath()
-  context.roundRect(width - 218, 20, 198, 76, 14)
-  context.fill()
-  context.fillStyle = '#d7e9e3'
-  context.font = '600 19px "DM Sans", sans-serif'
-  context.fillText('МЕСТНОЕ ВРЕМЯ', width - 199, 48)
-  context.fillStyle = '#ffffff'
-  context.font = '700 31px "DM Sans", sans-serif'
-  context.fillText(
-    now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-    width - 199,
-    83,
-  )
-}
-
-function createWindowTexture(now: Date) {
-  const canvas = document.createElement('canvas')
-  canvas.width = 1024
-  canvas.height = 640
-  drawWindowView(canvas, now)
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  return texture
-}
-
-function HospitalWindow({ open = false, targetAction, onAction }: { open?: boolean } & Pick<RoomSceneProps, 'targetAction' | 'onAction'>) {
-  const [texture, setTexture] = useState(() => createWindowTexture(new Date()))
-  const currentTexture = useRef(texture)
-
-  useEffect(() => {
-    const updateView = () => {
-      const nextTexture = createWindowTexture(new Date())
-      currentTexture.current.dispose()
-      currentTexture.current = nextTexture
-      setTexture(nextTexture)
-    }
-    updateView()
-    const intervalId = window.setInterval(updateView, 60_000)
-    return () => {
-      window.clearInterval(intervalId)
-      currentTexture.current.dispose()
-    }
-  }, [])
-
-  return (
-    <EditableTarget id="window" label="Окно" position={[-3.9, 3.15, -0.35]} hintScale={1} rotation={[0, Math.PI / 2 + (open ? 0.35 : 0), 0]}>
-      <SceneInteraction id="window" highlighted={targetAction === 'window'} onAction={onAction}><group>
-      <mesh position={[0, 0, -0.025]}>
-        <boxGeometry args={[2.2, 1.56, 0.12]} />
-        <meshStandardMaterial color="#e5ebe8" roughness={0.72} />
-      </mesh>
-      <mesh position={[0, 0, 0.045]}>
-        <boxGeometry args={[2.02, 1.36, 0.035]} />
-        <meshStandardMaterial color="#526762" roughness={0.4} />
-      </mesh>
-      <mesh position={[0, 0, 0.067]}>
-        <planeGeometry args={[1.92, 1.26]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 0, 0.09]} raycast={() => {}}>
-        <boxGeometry args={[0.035, 1.25, 0.025]} />
-        <meshStandardMaterial color="#f4f7f5" roughness={0.4} />
-      </mesh>
-      <mesh position={[0, 0, 0.09]} raycast={() => {}}>
-        <boxGeometry args={[1.92, 0.035, 0.025]} />
-        <meshStandardMaterial color="#f4f7f5" roughness={0.4} />
-      </mesh>
-      <mesh position={[0, -0.83, 0.035]} castShadow>
-        <boxGeometry args={[2.3, 0.12, 0.3]} />
-        <meshStandardMaterial color="#f4f7f5" roughness={0.55} />
-      </mesh>
-      </group></SceneInteraction>
-    </EditableTarget>
-  )
 }
 
 function FirstPersonNavigation({
@@ -622,6 +457,10 @@ function TwoToneWall({ bounds, floorY, id }: { bounds: THREE.Box3; floorY: numbe
   const center = bounds.getCenter(new THREE.Vector3())
   const size = bounds.getSize(new THREE.Vector3())
   const dividerY = THREE.MathUtils.clamp(floorY + 1.2, bounds.min.y, bounds.max.y)
+  const wallSettings = useSceneEditor(s => s.settings.objects[id])
+  const windowSettings = useSceneEditor(s => s.settings.objects.window)
+  const leftWall = size.x < size.z
+  const opening = leftWall ? windowLayout(center.toArray(), size.toArray(), wallSettings, windowSettings).opening : null
   const trimHeight = 0.035
   const bands = [
     { bottom: bounds.min.y, top: dividerY - trimHeight / 2, color: '#a7c6cf' },
@@ -630,10 +469,14 @@ function TwoToneWall({ bounds, floorY, id }: { bounds: THREE.Box3; floorY: numbe
   ]
 
   return <EditableTarget id={id} label={size.x < size.z ? 'Левая стена' : 'Задняя стена'} position={center.toArray()} hintScale={1}><EditorPulse id={id}><group name="TwoToneWall">
-    {bands.map(({ bottom, top, color }) => <mesh key={color} position={[0, (bottom + top) / 2 - center.y, 0]}>
-      <boxGeometry args={[size.x, top - bottom, size.z]} />
-      <meshStandardMaterial color={color} roughness={0.9} />
-    </mesh>)}
+    {bands.flatMap(({ bottom, top, color }) => {
+      const band = { left: -size.z / 2, right: size.z / 2, bottom: bottom - center.y, top: top - center.y }
+      const pieces = opening ? subtractOpening(band, opening) : [band]
+      return pieces.map((piece, index) => <mesh key={`${color}-${index}`} name={opening ? 'window-wall-reveal' : undefined} position={[0, (piece.bottom + piece.top) / 2, (piece.left + piece.right) / 2]}>
+        <boxGeometry args={[size.x, piece.top - piece.bottom, piece.right - piece.left]} />
+        <meshStandardMaterial color={color} roughness={0.9} />
+      </mesh>)
+    })}
   </group></EditorPulse></EditableTarget>
 }
 
@@ -648,7 +491,6 @@ function HospitalRoomAsset({
   patientState,
   animationClock = DEFAULT_ANIMATION_CLOCK,
   doctorArrived,
-  windowOpen,
   modelUrl,
 }: HospitalRoomModelProps & { modelUrl: string }) {
   const { scene } = useGLTF(modelUrl)
@@ -719,7 +561,7 @@ function HospitalRoomAsset({
     {floorBounds && <TiledFloor bounds={floorBounds} />}
     {wallBounds.map((bounds, index) => <TwoToneWall key={index} id={`wall-${index}`} bounds={bounds} floorY={floorBounds?.max.y ?? 0} />)}
 
-    <HospitalWindow open={windowOpen} onAction={onAction} targetAction={targetAction} />
+    {wallBounds.map((bounds, index) => bounds.getSize(new THREE.Vector3()).x < bounds.getSize(new THREE.Vector3()).z ? <HospitalWindow key={index} bounds={bounds} wallId={`wall-${index}`} /> : null)}
 
     <EditableTarget id="patient" label="Пациентка" hintScale={1}
       position={[
@@ -794,7 +636,6 @@ function Room({
   patientState,
   animationClock = DEFAULT_ANIMATION_CLOCK,
   doctorArrived,
-  windowOpen,
   actionAnchor,
   onActionPosition,
 }: RoomSceneProps) {
@@ -810,7 +651,6 @@ function Room({
         patientState={patientState}
         animationClock={animationClock}
         doctorArrived={doctorArrived}
-        windowOpen={windowOpen}
         covered={covered}
         firstPerson={firstPerson}
         blanketTransform={blanketTransform}
@@ -1048,7 +888,7 @@ function ObjectVisual({ id, color }: { id: ObjectId; color: string }) {
     <mesh position={[0, 0.13, -0.22]}><cylinderGeometry args={[0.025, 0.025, 0.24, 12]}/><meshStandardMaterial color="#8da6a2" metalness={0.65}/></mesh>
     <mesh position={[0, 0.25, -0.15]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.025, 0.025, 0.17, 12]}/><meshStandardMaterial color="#8da6a2" metalness={0.65}/></mesh>
   </group>
-  if (['patient', 'cpr', 'window'].includes(id)) return null
+  if (['patient', 'cpr'].includes(id)) return null
   if (id === 'call-bell' || id === 'bed-controls') return <group>
     <mesh position={[0, 0, -0.065]}><boxGeometry args={[0.17, 0.19, 0.08]}/><meshStandardMaterial color="#8da7a0" metalness={0.25}/></mesh>
     <mesh><boxGeometry args={id === 'bed-controls' ? [0.24, 0.15, 0.06] : [0.16, 0.26, 0.06]}/><meshStandardMaterial color="#f0f5ef"/></mesh>

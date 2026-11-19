@@ -6,8 +6,8 @@ import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
 import type { Vec3 } from './sceneSettings'
 import { useObjectHighlight } from './useObjectHighlight'
 
-export function EditableTarget({ id, label, position, rotation, scale, hintScale = 1.3, visible = true, children }: {
-  id: string; label: string; position?: Vec3 | Vector3; rotation?: Vec3; scale?: number | Vec3; hintScale?: number; visible?: boolean; children: ReactNode
+export function EditableTarget({ id, label, position, rotation, scale, hintScale = 1.3, visible = true, fixedWorldX, children }: {
+  id: string; label: string; position?: Vec3 | Vector3; rotation?: Vec3; scale?: number | Vec3; hintScale?: number; visible?: boolean; fixedWorldX?: number; children: ReactNode
 }) {
   const ref = useRef<Group>(null)
   const open = useSceneEditor(s => s.open)
@@ -28,9 +28,10 @@ export function EditableTarget({ id, label, position, rotation, scale, hintScale
       object.parent?.updateWorldMatrix(true, false)
       object.position.copy(object.parent ? object.parent.worldToLocal(point) : point)
     } else object.position.fromArray(target.localPosition)
+    if (fixedWorldX !== undefined) object.position.setX(fixedWorldX)
     object.scale.fromArray(target.localScale).multiplyScalar(override?.scale ?? 1)
     object.updateWorldMatrix(false, true)
-  }, [override, target])
+  }, [override, target, fixedWorldX])
   const select = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()
     selectEditorSceneObject(id)
@@ -76,7 +77,7 @@ export function SceneEditorControls({ firstPerson }: { firstPerson: boolean }) {
     }
   }, [open, controls])
   if (!open || !target) return null
-  return <TransformControls object={target.object as Object3D} mode="translate" space="world" size={0.85}
+  return <TransformControls object={target.object as Object3D} mode="translate" space="world" size={0.85} showX={selected !== 'window'}
     onMouseDown={() => useSceneEditor.setState({ dragging: true })}
     onMouseUp={() => useSceneEditor.setState({ dragging: false, selectionBlockedUntil: Date.now() + 250 })}
     onObjectChange={() => {

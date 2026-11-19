@@ -62,6 +62,8 @@ try {
   assert.ok(await evaluate('document.querySelector(".menu-button").textContent.includes("Выйти в меню")'))
   assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName("interaction-patient").scale.x'),1,'Patient never grows')
   await evaluate('window.__initialCamera=window.__threeStore.getState().camera')
+  assert.equal(await evaluate(`(()=>{const visible=[];window.__threeStore.getState().scene.traverse(o=>{if(o.name.startsWith('editable-imported-')&&o.visible)visible.push(o.name)});return visible.length})()`),0,'Unused decorative equipment stays hidden during simulation')
+  assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName("editable-bed").visible'),true,'Functional bed remains visible')
   await shot('01-minimal-desktop')
   const select = async id => {
     if(await evaluate(`Boolean(document.querySelector('[aria-label="Закрыть действия"]'))`)) await click('[aria-label="Закрыть действия"]','')

@@ -2,6 +2,8 @@ import { Box3, Group, Mesh, Vector3, type Material, type Object3D } from 'three'
 import type { Vec3 } from './sceneSettings'
 
 const categories: Array<[RegExp, string, string]> = [
+  // Decorative document holders are not part of the functional bed.
+  [/Bedside_Chart/, 'imported-chart-holder', 'Держатель документов'],
   [/Hospital_Bed|Matress_Twin/, 'bed', 'Кровать'],
   [/Drawers_on_Wheels/, 'imported-cabinet', 'Тумба на колёсах'],
   [/IV_Bag_Holder|IV_Monitor/, 'imported-iv-stand', 'Инфузионная стойка'],
@@ -13,7 +15,6 @@ const categories: Array<[RegExp, string, string]> = [
   [/Defib/, 'imported-defibrillator', 'Дефибриллятор'],
   [/Ophthal|Otoscope|Scope_Holder/, 'imported-diagnostic', 'Диагностические инструменты'],
   [/Blood_Pressure_Monitor/, 'imported-pressure', 'Прикроватный прибор'],
-  [/Bedside_Chart/, 'imported-chart-holder', 'Держатель документов'],
   [/Biohazard_Bin/, 'imported-bin', 'Контейнер для отходов'],
   [/Stethoscope|Connecting/, 'imported-stethoscope', 'Стетоскоп'],
   [/Clear_Tube|Wire_/, 'imported-wires', 'Трубки и провода'],

@@ -711,7 +711,7 @@ function HospitalRoomAsset({
     <>
     <group position={offset} scale={scale}>
       <primitive object={model} />
-      {importedObjects.filter(entry => entry.id !== 'bed' || !bedReady).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1}>
+      {importedObjects.filter(entry => entry.id !== 'bed' || !bedReady).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1} visible={editorOpen || entry.id === 'bed'}>
         <EditorPulse id={entry.id}><primitive object={entry.object}/></EditorPulse>
       </EditableTarget>)}
     </group>

@@ -70,6 +70,7 @@ try {
   }
   await initialize()
   await click('button','Начать эпизод');await shortcut()
+  await wait(`(()=>{let hidden=0;window.__three.getState().scene.traverse(o=>{if(o.name.startsWith('editable-imported-')&&!o.visible)hidden++});return hidden===0})()`,'editor reveals decorative objects for adjustment')
   const clock=await evaluate('window.__simulation.getState().attempt.patient.secondsSinceOnset')
   await sleep(600);assert.equal(await evaluate('window.__simulation.getState().attempt.patient.secondsSinceOnset'),clock,'Editor pauses clinical time')
   assert.equal(await evaluate('document.querySelectorAll(".patient-panel,.action-panel,.scenario-picker").length'),0)
@@ -137,6 +138,7 @@ try {
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'})
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'})
   await wait('document.querySelector(".scene-editor")===null','Escape closes editor')
+  await wait(`(()=>{let visible=0;window.__three.getState().scene.traverse(o=>{if(o.name.startsWith('editable-imported-')&&o.visible)visible++});return visible===0})()`,'closing editor hides decorative objects again')
   assert.equal(exceptions.length,0,JSON.stringify(exceptions))
   console.log('Scene editor passed: QWE, actual 3D selection, live coordinates/size/color, undo/redo, clipboard export, JSON import, camera capture/FOV, object reset, hidden blanket, reload persistence, paused scenario and mobile layout.')
 } finally {

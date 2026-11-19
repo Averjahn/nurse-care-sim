@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import { createPortal, useFrame } from '@react-three/fiber'
-import { CanvasTexture, Group, LinearFilter, MathUtils } from 'three'
+import { CanvasTexture, LinearFilter } from 'three'
 import { useSimulationStore } from './store'
 import { useSceneEditor } from './sceneEditorStore'
 import { drawMonitor, pulseWave } from './pulseWave'
@@ -75,32 +75,6 @@ export function MedicalModel({ id }: { id: ObjectId }) {
   if (id === 'food-water') return <group><Rod at={[0, .07, 0]} height={.14} radius={.055} color="#bfdce3"/><Box size={[.19, .045, .14]} at={[.18, .025, 0]} color="#dcbd91"/></group>
   return null
 }
-export function TreatmentCart() {
-  return <group name="treatment-cart" position={[0, 0, 0]}>{[.55, 1.05].map(y => <Box key={y} size={[1.35, .055, .65]} at={[0, y, 0]}/>)}{[-.6, .6].flatMap(x => [-.25, .25].map(z => <group key={`${x}-${z}`}><Rod at={[x, .62, z]} height={.98}/><mesh position={[x, .06, z]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.065, .065, .04, 10]}/><meshStandardMaterial color="#5d7177"/></mesh></group>))}</group>
-}
-/** A lightweight authored bed with three independent sections. */
-export function FunctionalBed() {
-  const patient = useSimulationStore(s => s.attempt?.patient)
-  const paused = useSimulationStore(s => s.attempt?.paused)
-  const editor = useSceneEditor(s => s.open)
-  const head = useRef<Group>(null), thigh = useRef<Group>(null), shin = useRef<Group>(null)
-  useFrame((_, dt) => {
-    if (paused || editor) return
-    if (head.current) head.current.rotation.x = MathUtils.damp(head.current.rotation.x, patient?.position === 'semiSitting' ? .65 : 0, 4, dt)
-    if (thigh.current) thigh.current.rotation.x = MathUtils.damp(thigh.current.rotation.x, patient?.position === 'kneesUp' ? -.65 : patient?.position === 'legsUp' ? -.3 : 0, 4, dt)
-    if (shin.current) shin.current.rotation.x = MathUtils.damp(shin.current.rotation.x, patient?.position === 'kneesUp' ? 1.3 : 0, 4, dt)
-  })
-  const cushion = (length: number, z: number) => <><Box size={[1.02, .14, length]} at={[0, 0, z]} color="#dce7df"/><Box size={[1.08, .055, length]} at={[0, -.105, z]} color="#78959a"/></>
-  return <group name="functional-bed" position={[-.274, 1.43, -2.2713]}>
-    <Box size={[1.12, .16, 2.5]} at={[0, -.32, 0]} color="#879c9e"/>
-    <group name="Bed_Head" ref={head} position={[0, 0, -.05]}>{cushion(1.2, -.6)}{patient?.position !== 'legsUp' && patient?.breathing !== false && <Box size={[.65, .1, .32]} at={[0, .1, -.98]} color="#f2f4eb"/>}</group>
-    <group name="Bed_Knee" ref={thigh} position={[0, 0, -.05]}>{cushion(.64, .32)}<group name="Bed_FootEnd" ref={shin} position={[0, 0, .64]}>{cushion(.64, .32)}</group></group>
-    {[-.43, .43].flatMap(x => [-.95, .95].map(z => <group key={`${x}-${z}`}><Rod at={[x, -.8, z]} height={.85}/><mesh position={[x, -1.13, z]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.1, .1, .06, 12]}/><meshStandardMaterial color="#556a70"/></mesh></group>))}
-    {[-1.37, 1.37].map(z => <Box key={z} size={[1.12, .5, .075]} at={[0, .03, z]} color="#b2d3d3"/>)}
-    {[-.57, .57].map(x => <Box key={x} size={[.055, .1, 1.75]} at={[x, .1, 0]} color="#f3f4ea"/>)}
-  </group>
-}
-
 /** Accessories are attached to rig bones so they follow the posture without raycasting the skin. */
 function AccessoryPortal({ target, visible, children }: { target: import('three').Object3D; visible: boolean; children: import('react').ReactNode }) {
   return createPortal(<group name="medical-accessory" visible={visible}>{children}</group>, target)

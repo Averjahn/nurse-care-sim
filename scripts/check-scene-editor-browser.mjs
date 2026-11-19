@@ -119,7 +119,7 @@ try {
   await shot('03-camera')
   await click('[role="tab"]','Объекты')
   await click('button','Сбросить этот объект')
-  await wait('Math.abs(window.__editor.getState().targets["call-bell"].object.getWorldPosition(new window.__T.Vector3()).x-.34)<0.001','Reset restores original transform')
+  await wait('Math.abs(window.__editor.getState().targets["call-bell"].object.getWorldPosition(new window.__T.Vector3()).x-.88)<0.001','Reset restores original transform')
   await click('[aria-label="Отменить изменение"]','')
   await wait('Math.abs(window.__editor.getState().targets["call-bell"].object.getWorldPosition(new window.__T.Vector3()).x-1.4)<0.001','Undo restores custom transform')
   // Blankets remain selectable in the list while hidden during normal care.
@@ -135,7 +135,7 @@ try {
   await initialize();assert.equal(await evaluate('window.__editor.getState().open'),false)
   assert.equal(await evaluate('window.__editor.getState().settings.camera.fov'),46)
   assert.equal(await evaluate('window.__editor.getState().settings.camera.eyeHeight'),2.2)
-  await wait('Math.abs(window.__editor.getState().targets["call-bell"].object.getWorldPosition(new window.__T.Vector3()).x-1.4)<0.001','Reload preserves world transform')
+  await wait('Boolean(window.__editor.getState().targets["call-bell"]) && Math.abs(window.__editor.getState().targets["call-bell"].object.getWorldPosition(new window.__T.Vector3()).x-1.4)<0.001','Reload preserves world transform')
   await shortcut()
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true})
   await shot('04-editor-mobile')

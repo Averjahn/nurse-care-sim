@@ -11,7 +11,11 @@ import { EditableTarget, EditorPulse, SceneEditorControls } from './SceneEditor3
 import { splitRoomObjects } from './importedRoomObjects'
 import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
 import { useObjectHighlight } from './useObjectHighlight'
-import { FunctionalBed, MedicalModel, TreatmentCart } from './MedicalModels'
+import { MedicalModel } from './MedicalModels'
+import { BedMotionProvider } from './BedMotion'
+import { useBedMotion } from './bedMotionContext'
+import RestoredBed from './RestoredBed'
+import { BED_ORIGIN, PATIENT_BED_POSITION, bedPoint } from './bedKinematics'
 import HospitalWindow from './HospitalWindow'
 import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
@@ -299,25 +303,28 @@ function PatientVisual() {
 }
 
 function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
-  const { surface, hem } = useMemo(() => {
+  const motion = useBedMotion()
+  const root = useRef<THREE.Group>(null)
+  const previous = useRef('')
+  const { surface, hem, restSurface, restHem } = useMemo(() => {
     const columns = 36
     const rows = 72
     const width = 1.8
-    const length = 2.05
+    const length = 1.65
     const startZ = -0.58
     const surface = new THREE.BufferGeometry()
     const positions: number[] = []
     const indices: number[] = []
     const heightAt = (x: number, along: number) => {
       const distanceFromCenter = Math.abs(x)
-      const torsoDome = Math.max(0, 1 - (distanceFromCenter / 0.62) ** 2) * 0.16
+      const torsoDome = Math.max(0, 1 - (distanceFromCenter / 0.38) ** 2) * 0.16
       const sideDrape = Math.max(0, (distanceFromCenter - 0.57) / 0.33) * 0.3
       const folds = (
         Math.sin(along * 29 + distanceFromCenter * 8) * 0.016
         + Math.sin(along * 53 - distanceFromCenter * 13) * 0.007
       ) * (0.3 + Math.min(sideDrape, 1))
       const endFold = Math.exp(-(((along - 0.94) / 0.035) ** 2)) * 0.045
-      return 0.36 + Math.sin(Math.PI * along) * 0.08 + torsoDome - sideDrape + folds + endFold
+      return 0.33 + Math.sin(Math.PI * along) * 0.08 + 0.08 * Math.exp(-along / .15) + 0.07 * Math.exp(-(1 - along) / .15) + torsoDome - sideDrape + folds + endFold
     }
 
     for (let row = 0; row <= rows; row += 1) {
@@ -359,8 +366,31 @@ function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
     )
     const hem = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hemPoints), 144, 0.012, 6, false)
 
-    return { surface, hem }
+    return { surface, hem, restSurface: new Float32Array(surface.getAttribute('position').array), restHem: new Float32Array(hem.getAttribute('position').array) }
   }, [])
+
+  useFrame(() => {
+    const group = root.current, frame = motion?.current.frame
+    if (!group || !frame) return
+    let ancestor: THREE.Object3D | null = group
+    while (ancestor) { if (!ancestor.visible) return; ancestor = ancestor.parent }
+    group.updateWorldMatrix(true, false); frame.updateWorldMatrix(true, false)
+    const matrix = new THREE.Matrix4().copy(frame.matrixWorld).invert().multiply(group.matrixWorld), inverse = matrix.clone().invert()
+    const a = motion!.current.angles, key = `${a.head},${a.thigh},${a.shin}:${matrix.elements.join(',')}`
+    if (key === previous.current) return
+    previous.current = key
+    const point = new THREE.Vector3()
+    for (const [geometry, rest] of [[surface, restSurface], [hem, restHem]] as const) {
+      const p = geometry.getAttribute('position')
+      for (let i = 0; i < p.count; i++) {
+        point.fromArray(rest, i * 3).applyMatrix4(matrix)
+        const [y, z] = bedPoint(point.y, point.z, a)
+        point.setY(y).setZ(z).applyMatrix4(inverse); p.setXYZ(i, point.x, point.y, point.z)
+      }
+      p.needsUpdate = true; geometry.computeVertexNormals(); geometry.computeBoundingSphere()
+    }
+
+  })
 
   useEffect(() => () => {
     surface.dispose()
@@ -368,7 +398,7 @@ function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
   }, [hem, surface])
 
   return (
-    <group>
+    <group ref={root} name="patient-blanket">
       <mesh geometry={surface} castShadow receiveShadow>
         <meshStandardMaterial
           color={highlighted ? ACTION_HIGHLIGHT_COLOR : '#b9d1d5'}
@@ -386,15 +416,7 @@ function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
           roughness={0.88}
         />
       </mesh>
-      <mesh position={[0, 0.49, -0.48]} rotation={[0.035, 0, 0]} castShadow>
-        <boxGeometry args={[1.62, 0.035, 0.12]} />
-        <meshStandardMaterial
-          color={highlighted ? ACTION_HIGHLIGHT_COLOR : '#d5e2e1'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.3 : 0}
-          roughness={0.96}
-        />
-      </mesh>
+
     </group>
   )
 }
@@ -499,7 +521,6 @@ function HospitalRoomAsset({
   const editorOpen = useSceneEditor(s => s.open)
   const editingBlanket = useSceneEditor(s => s.selected === 'blanket-on-patient')
   const patientScale = patientTransform.scale * PATIENT_REAL_WORLD_SCALE
-  const bedReady = true
   const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
   const { model, scale, offset, floorBounds, wallBounds, importedObjects } = useMemo(() => {
     const model = scene.clone(true)
@@ -536,7 +557,6 @@ function HospitalRoomAsset({
       wall.min.multiplyScalar(scale).add(offset)
       wall.max.multiplyScalar(scale).add(offset)
     })
-    if (bedReady) model.traverse(object => { if (object.name.includes('Hospital_Bed')) object.visible = false })
     const importedObjects = splitRoomObjects(model)
     return {
     importedObjects,
@@ -546,7 +566,11 @@ function HospitalRoomAsset({
     floorBounds: normalizedFloor,
     wallBounds,
     }
-  }, [scene, bedReady])
+  }, [scene])
+
+  const cabinetSource = importedObjects.find(entry => entry.id === 'imported-cabinet')
+  const bedSource = importedObjects.find(entry => entry.id === 'bed')
+  const bedSourceMatrix = useMemo(() => new THREE.Matrix4().makeTranslation(offset.x, offset.y, offset.z).multiply(new THREE.Matrix4().makeScale(scale, scale, scale)).multiply(new THREE.Matrix4().makeTranslation(...(bedSource?.position ?? [0, 0, 0]))), [offset, scale, bedSource])
 
   useEffect(() => () => importedObjects.forEach(entry => entry.materials.forEach(material => material.dispose())), [importedObjects])
 
@@ -554,7 +578,7 @@ function HospitalRoomAsset({
     <>
     <group position={offset} scale={scale}>
       <primitive object={model} />
-      {importedObjects.filter(entry => entry.id !== 'bed' || !bedReady).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1} visible={editorOpen || entry.id === 'bed'}>
+      {importedObjects.filter(entry => !['bed', 'imported-cabinet'].includes(entry.id)).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1} visible={editorOpen}>
         <EditorPulse id={entry.id}><primitive object={entry.object}/></EditorPulse>
       </EditableTarget>)}
     </group>
@@ -564,23 +588,26 @@ function HospitalRoomAsset({
 
     {wallBounds.map((bounds, index) => bounds.getSize(new THREE.Vector3()).x < bounds.getSize(new THREE.Vector3()).z ? <HospitalWindow key={index} bounds={bounds} wallId={`wall-${index}`} /> : null)}
 
+    <BedMotionProvider>
+    <EditableTarget id="bed" label="Кровать" position={BED_ORIGIN} hintScale={1}>
+      {bedSource && <EditorPulse id="bed"><RestoredBed source={bedSource.object} sourceMatrix={bedSourceMatrix}/></EditorPulse>}
     <EditableTarget id="patient" label="Пациентка" hintScale={1}
       position={[
-        (patientState?.location === 'sink' ? -3.05 : -0.274) + patientTransform.x,
-        (patientState?.location === 'sink' ? 0.15 : 1.3954) + patientTransform.y,
-        (patientState?.location === 'sink' ? 1.7 : -2.0613) + patientTransform.z,
+        (patientState?.location === 'sink' ? -3.05 - BED_ORIGIN[0] : PATIENT_BED_POSITION[0]) + patientTransform.x,
+        (patientState?.location === 'sink' ? .15 - BED_ORIGIN[1] : PATIENT_BED_POSITION[1] + .28) + patientTransform.y,
+        (patientState?.location === 'sink' ? 1.7 - BED_ORIGIN[2] : PATIENT_BED_POSITION[2] + .21) + patientTransform.z,
       ]}
       scale={patientScale}
     >
       <SceneInteraction id={patientState?.breathing === false ? 'cpr' : 'patient'} highlighted={targetAction === 'patient' || targetAction === 'cpr'} onAction={onAction}>
-      <AnimatedPatient patient={patientState ?? basePatient} clock={animationClock} fallback={patientState ? <ArticulatedPatient patient={patientState} clock={animationClock} showSupports={!bedReady}/> : <PatientVisual/>}/>
+      <AnimatedPatient patient={patientState ?? basePatient} clock={animationClock} fallback={patientState ? <ArticulatedPatient patient={patientState} clock={animationClock} showSupports={false}/> : <PatientVisual/>}/>
       </SceneInteraction>
     </EditableTarget>
     <group
       position={[
-        (patientState?.location === 'sink' ? -3.05 : -0.274) + patientTransform.x,
-        (patientState?.location === 'sink' ? 0.15 : 1.3954) + patientTransform.y,
-        (patientState?.location === 'sink' ? 1.7 : -2.0613) + patientTransform.z,
+        (patientState?.location === 'sink' ? -3.05 - BED_ORIGIN[0] : PATIENT_BED_POSITION[0]) + patientTransform.x,
+        (patientState?.location === 'sink' ? .15 - BED_ORIGIN[1] : PATIENT_BED_POSITION[1] + .28) + patientTransform.y,
+        (patientState?.location === 'sink' ? 1.7 - BED_ORIGIN[2] : PATIENT_BED_POSITION[2] + .21) + patientTransform.z,
       ]}
     >
         <EditableTarget id="blanket-on-patient" label="Одеяло на пациентке" visible={covered || (editorOpen && editingBlanket)}
@@ -591,8 +618,12 @@ function HospitalRoomAsset({
         </EditableTarget>
     </group>
 
-    <EditableTarget id="bed" label="Функциональная кровать" position={[0, 0, 0]} hintScale={1}><EditorPulse id="bed"><FunctionalBed/></EditorPulse></EditableTarget>
-    <EditableTarget id="treatment-cart" label="Процедурный столик" position={[2.6, .2, -.8]} hintScale={1}><EditorPulse id="treatment-cart"><TreatmentCart/></EditorPulse></EditableTarget>
+      <BedsideInteractions targetAction={targetAction} onAction={onAction} patientState={patientState}/>
+    </EditableTarget>
+    </BedMotionProvider>
+    {cabinetSource && <EditableTarget id="bedside-cabinet" label="Прикроватная тумба" position={[1.7, .856, -2.4]} hintScale={1}>
+      <EditorPulse id="bedside-cabinet"><group scale={scale}><primitive object={cabinetSource.object}/></group></EditorPulse>
+    </EditableTarget>}
     <WallStorageShelf />
     <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
     {(doctorArrived || editorOpen) && <EditableTarget id="doctor" label="Врач" position={[2.9, 0, 1.5]} hintScale={1}><EditorPulse id="doctor">
@@ -715,6 +746,7 @@ function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: 
   const compressionAge = useRef(Infinity)
   const lastCompression = useRef(clock.compressions)
   const pose = patientPose(patient)
+  const bedMotion = useBedMotion()
   const skin = ({ normal: '#dcb296', pale: '#d1c6b6', flushed: '#db927f', coldSweat: '#c4c8bc', rash: '#dfa18e' })[patient.skin]
   useFrame((_, realDelta) => {
     if (clock.paused) return
@@ -723,9 +755,9 @@ function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: 
     if (clock.compressions > lastCompression.current) compressionAge.current = 0
     lastCompression.current = clock.compressions
     compressionAge.current += realDelta
-    const angle = pose === 'semifowler' ? 0.65 : pose === 'sitting_edge' ? 1.2 : 0
+    const angle = bedMotion?.current.angles.head ?? (pose === 'semifowler' ? 0.65 : pose === 'sitting_edge' ? 1.2 : 0)
     if (torso.current) torso.current.rotation.x = THREE.MathUtils.damp(torso.current.rotation.x, angle, 5, delta)
-    const legAngle = pose === 'knees_flexed' ? -.65 : pose === 'legs_elevated' ? -0.3 : pose === 'sitting_edge' ? 0.8 : 0
+    const legAngle = bedMotion ? -bedMotion.current.angles.thigh : pose === 'knees_flexed' ? -.65 : pose === 'legs_elevated' ? -0.3 : pose === 'sitting_edge' ? 0.8 : 0
     if (legs.current) legs.current.rotation.x = THREE.MathUtils.damp(legs.current.rotation.x, legAngle, 5, delta)
     if (shins.current) shins.current.rotation.x = THREE.MathUtils.damp(shins.current.rotation.x, pose === 'knees_flexed' ? 1.3 : 0, 5, delta)
     if (body.current) body.current.rotation.y = THREE.MathUtils.damp(body.current.rotation.y, pose === 'sitting_edge' ? Math.PI / 2 : 0, 5, delta)
@@ -734,7 +766,7 @@ function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: 
       breath.current.scale.y = 1 + (patient.breathing ? Math.sin(visualTime.current * 2.8) * 0.035 : 0) - compressionPulse
     }
   })
-  return <group ref={body} userData={{ patientRenderer: 'fallback' }}>
+  return <group ref={body} position={[0, .15, 0]} userData={{ patientRenderer: 'fallback' }}>
     <group ref={torso} position={[0, 0.15, 0]}>
       <mesh ref={breath} position={[0, 0.09, -0.3]}><boxGeometry args={[0.45, 0.22, 0.65]}/><meshStandardMaterial color="#b7d9dc" roughness={0.85}/></mesh>
       <mesh position={[0, 0.13, -0.86]} scale={[0.8, 0.85, 1]}><sphereGeometry args={[0.2, 24, 16]}/><meshStandardMaterial color={skin}/></mesh>
@@ -790,22 +822,22 @@ interface SceneObjectPlacement {
   color: string
 }
 const sceneObjects: SceneObjectPlacement[] = [
-  { id: 'thermometer', position: [3.02, 1.827, -3.41], color: '#e4eee9' },
-  { id: 'pulseox', position: [3.31, 1.866, -3.54], color: '#6e9db0' },
-  { id: 'ecg-device', position: [2.25, 1.35, -.8], color: '#6c9ca3' },
-  { id: 'shock-kit', position: [2.97, 1.35, -.8], color: '#bb5d55' },
-  { id: 'iv-stand', position: [1.35, .2, -3.1], color: '#86a5a8' },
-  { id: 'ice-pack', position: [2.18, .85, -.8], color: '#79a9c5' },
-  { id: 'analgesics', position: [2.55, .81, -.8], color: '#e8ece4' },
-  { id: 'enema-kit', position: [2.83, .88, -.8], color: '#a582a2' },
+  { id: 'thermometer', position: [1.55, 1.546, -2.15], color: '#e4eee9' },
+  { id: 'pulseox', position: [1.83, 1.586, -2.2], color: '#6e9db0' },
+  { id: 'ecg-device', position: [2.95, 1.875, -3.62], color: '#6c9ca3' },
+  { id: 'shock-kit', position: [3.02, 1.87, -3.62], color: '#bb5d55' },
+  { id: 'iv-stand', position: [-1.95, .124, -3.1], color: '#86a5a8' },
+  { id: 'ice-pack', position: [2.55, 1.872, -3.62], color: '#79a9c5' },
+  { id: 'analgesics', position: [2.96, 1.8325, -3.4], color: '#e8ece4' },
+  { id: 'enema-kit', position: [3.6, 1.117, -3.62], color: '#a582a2' },
   { id: 'food-water', position: [3.7, 1.8, -3.5], color: '#bddbe1' },
   // Controls and emergency bell mount to the authored bed's right rail.
-  { id: 'bed-controls', position: [0.34, 1.57, -1.65], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
-  { id: 'call-bell', position: [0.34, 1.6, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
-  { id: 'monitor', position: [2.55, SHELF_TOP + 0.205, SHELF_Z], color: '#4b918d' },
+  { id: 'bed-controls', position: [.88, 1.23, -1.12], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
+  { id: 'call-bell', position: [.88, 1.54, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
+  { id: 'monitor', position: [1.7, 1.725, -2.7], color: '#4b918d' },
   { id: 'chart', position: [3.7, SHELF_LOWER + 0.026, SHELF_Z], rotation: [-Math.PI / 2, 0, 0], hitbox: [0.32, 0.44, 0.06], color: '#809c83' },
   { id: 'medications', position: [1.98, SHELF_TOP + 0.075, SHELF_Z], color: '#b57e60' },
-  { id: 'oxygen', position: [1.9, SHELF_LOWER + 0.475, SHELF_Z], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
+  { id: 'oxygen', position: [1.35, .654, -1.2], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
   { id: 'blanket', position: [2.48, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
   { id: 'heater', position: [3.48, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
   { id: 'sink', position: [-3.75, 1.15, 1.7], rotation: [0, Math.PI / 2, 0], color: '#a3beb9' },
@@ -813,6 +845,13 @@ const sceneObjects: SceneObjectPlacement[] = [
   { id: 'linen', position: [3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
   { id: 'equipment', position: [3.03, SHELF_TOP + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
 ]
+function BedsideInteractions({ targetAction, onAction, patientState }: Pick<RoomSceneProps, 'targetAction' | 'onAction' | 'patientState'>) {
+  const motion = useBedMotion()!
+  const bell = useRef<THREE.Group>(null)
+  const placements = useMemo(() => sceneObjects.filter(o => ['call-bell', 'bed-controls'].includes(o.id)).map(o => ({ ...o, position: o.position.map((v, i) => v - BED_ORIGIN[i]) as [number, number, number] })), [])
+  useFrame(() => { bell.current?.rotation.set(motion.current.angles.head, 0, 0) })
+  return <>{placements.map(object => object.id === 'call-bell' ? <group ref={bell} key={object.id}><EmergencyObject object={object} highlighted={targetAction === object.id} onAction={onAction}/></group> : patientState?.breathing !== false ? <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/> : null)}</>
+}
 /** Pulse the actual mesh materials, never a proxy box. All materials here
  * belong to the mounted scene instance (patient materials are cloned on load). */
 function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
@@ -847,7 +886,7 @@ function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, 
   const editorOpen = useSceneEditor(s => s.open)
   const episode = useSimulationStore(s => s.attempt?.episode)
   return <>
-    {sceneObjects.filter(o => editorOpen || (objectInCase(o.id, episode) && (patientState?.breathing !== false || o.id === 'call-bell'))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => !['call-bell', 'bed-controls'].includes(o.id) && (editorOpen || (objectInCase(o.id, episode) && patientState?.breathing !== false))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }

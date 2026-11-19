@@ -10,6 +10,8 @@ import { CompressionPlayback, RigPlayback } from './rigPlayback'
 import type { PatientState } from './simulation'
 import { EditableTarget, EditorPulse } from './SceneEditor3D'
 import { PatientAccessories } from './MedicalModels'
+import { useBedMotion } from './bedMotionContext'
+import { alignPatientBones, prepareBedContact, restPatientArms, seatPatientOnMattress } from './patientBedContact'
 import { installPatientPicking } from './patientPicking'
 
 const ROOT = import.meta.env.BASE_URL
@@ -56,6 +58,8 @@ export function AnimatedPatient({ patient, clock, fallback }: { patient: Patient
 }
 function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock: AnimationClock; paths: string[] }) {
   const loaded = useRigGLTF(paths)
+  const bedMotion = useBedMotion()
+  const contactApplied = useRef(false)
   const prepared = useMemo(() => {
     const object = cloneSkeleton(loaded[0].scene)
     object.userData.patientRenderer = 'rigged'
@@ -87,7 +91,7 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
           if (material instanceof THREE.MeshStandardMaterial && material.name.startsWith('tripo_material_')) cleanRigClothing(material)
         }
       })
-      return { object, materials, clips: clips.filter(c => c.name !== 'compression'), compression: clips.filter(c => c.name === 'compression'), morphMeshes, skin }
+      return { contact: prepareBedContact(object), object, materials, clips: clips.filter(c => c.name !== 'compression'), compression: clips.filter(c => c.name === 'compression'), morphMeshes, skin }
     } catch (error) { materials.forEach(material => material.dispose()); throw error }
   }, [loaded])
   const { actions, mixer } = useAnimations(prepared.clips, prepared.object)
@@ -124,6 +128,14 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
     const compressing = compression.actions.compression?.isRunning() ?? false
     applyRigMorphs(prepared.morphMeshes, targets, prepared.compression[0], compressing)
     applyRigSkin(prepared.skin, patient.skin)
+    if (bedMotion?.current.frame && patient.location !== 'sink' && patient.position !== 'sitting') {
+      if (!clock.paused || !contactApplied.current) {
+        alignPatientBones(prepared.contact, bedMotion.current.angles)
+        seatPatientOnMattress(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, patient.position !== 'legsUp' && patient.breathing)
+        restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles)
+        contactApplied.current = true
+      }
+    } else prepared.object.position.setY(0)
   })
   return <><primitive object={prepared.object} dispose={null}/><PatientAccessories object={prepared.object}/></>
 }

@@ -69,7 +69,7 @@ try {
   const select = async id => {
     if(await evaluate(`Boolean(document.querySelector('[aria-label="Закрыть действия"]'))`)) await click('[aria-label="Закрыть действия"]','')
     await evaluate(`(()=>{const {scene,camera,controls}=window.__threeStore.getState();scene.updateMatrixWorld(true);const target=scene.getObjectByName('interaction-'+${JSON.stringify(id)});if(!target)throw new Error('Missing interactive object');const center=new window.__THREE.Box3().setFromObject(target).getCenter(new window.__THREE.Vector3());controls.enableDamping=false;controls.minDistance=1;controls.target.copy(center);camera.position.copy(center).add(new window.__THREE.Vector3(3,3,5));controls.update();camera.updateMatrixWorld();scene.updateMatrixWorld(true)})()`)
-    await sleep(100)
+    await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`)
     const point=await evaluate(`(()=>{const T=window.__THREE,{scene,camera,gl}=window.__threeStore.getState();const target=scene.getObjectByName('interaction-'+${JSON.stringify(id)}),candidates=[target.getWorldPosition(new T.Vector3())];target.traverse(o=>{if(o instanceof T.Mesh)candidates.push(new T.Box3().setFromObject(o).getCenter(new T.Vector3()))});const rect=gl.domElement.getBoundingClientRect();for(const point of candidates){const p=point.project(camera);const x=rect.left+(p.x+1)/2*rect.width,y=rect.top+(1-p.y)/2*rect.height;if(document.elementFromPoint(x,y)!==gl.domElement)continue;const ray=new T.Raycaster();ray.setFromCamera(new T.Vector2(p.x,p.y),camera);let hit=ray.intersectObjects(scene.children,true).find(h=>{let o=h.object;while(o){if(!o.visible)return false;o=o.parent}return true})?.object;while(hit){if(hit===target)return {x,y};hit=hit.parent}}return null})()`)
     assert.ok(point,`Object ${id} must be visible and clickable in the scene`)
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point})
@@ -140,7 +140,7 @@ try {
   await click('[aria-label="Закрыть действия"]','')
   await click('.header-actions button','От первого лица')
   await wait('document.querySelector(".crosshair-label") !== null','first-person crosshair')
-  await evaluate('(()=>{const {camera}=window.__threeStore.getState();camera.position.set(1.9,1.475,0.98);camera.lookAt(1.9,1.475,-3.62);camera.updateMatrixWorld()})()')
+  await evaluate('(()=>{const {camera}=window.__threeStore.getState();camera.position.set(1.35,.654,2.8);camera.lookAt(1.35,.654,-1.2);camera.updateMatrixWorld()})()')
   await wait('document.querySelector(".crosshair-label").textContent.includes("Кислород")','unlimited first-person reach')
   assert.equal(await evaluate('window.__initialCamera===window.__threeStore.getState().camera'),true,'Timer updates must preserve the configured camera instance')
   assert.equal(exceptions.length,0,JSON.stringify(exceptions))

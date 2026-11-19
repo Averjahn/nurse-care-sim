@@ -1,9 +1,12 @@
 import { create } from 'zustand'
+import { useMemo } from 'react'
 import type { Object3D } from 'three'
+import { useSimulationStore } from './store.ts'
 import { DEFAULT_SCENE_SETTINGS, SCENE_SETTINGS_KEY, parseSceneSettings, readSceneSettings, type ObjectSettings, type SceneSettings, type Vec3 } from './sceneSettings.ts'
 
 export interface EditorTarget { id: string; label: string; object: Object3D; position: Vec3; localPosition: Vec3; localScale: Vec3; hintScale: number }
 interface EditorState {
+  layout: string; catalog: boolean; setLayout: (layout: string) => void; setCatalog: (catalog: boolean) => void
   open: boolean; selected: string; preview: boolean; settings: SceneSettings
   dragging: boolean; selectionBlockedUntil: number
   targets: Record<string, EditorTarget>; undoStack: SceneSettings[]; redoStack: SceneSettings[]; storageError: string
@@ -34,8 +37,9 @@ export const useSceneEditor = create<EditorState>((set, get) => {
     set({ settings, undoStack: merge ? state.undoStack : [...state.undoStack, state.settings].slice(-50), redoStack: [], storageError: persist(settings) })
   }
   return {
+    layout: '', catalog: false, setLayout: layout => set({ layout, selected: 'patient' }), setCatalog: catalog => set({ catalog }),
     open: false, selected: 'patient', preview: true, settings: readSceneSettings(), dragging: false, selectionBlockedUntil: 0, targets: {}, undoStack: [], redoStack: [], storageError: '', captureView: null,
-    toggle: () => set(s => ({ open: !s.open })), select: selected => set({ selected }), setPreview: preview => set({ preview }),
+    toggle: () => set(s => ({ open: !s.open, layout: useSimulationStore.getState().attempt?.episode ?? s.layout })), select: selected => set({ selected }), setPreview: preview => set({ preview }),
     register: target => set(s => ({ targets: { ...s.targets, [target.id]: target } })),
     unregister: (id, object) => set(s => {
       if (s.targets[id]?.object !== object) return s
@@ -43,11 +47,17 @@ export const useSceneEditor = create<EditorState>((set, get) => {
     }),
     updateObject: (id, patch, field = Object.keys(patch).join(',')) => {
       const current = get().settings
+      const layout = get().layout
+      if (layout) {
+        const objects = current.layouts?.[layout] ?? {}
+        commit(parseSceneSettings({ ...current, layouts: { ...current.layouts, [layout]: { ...objects, [id]: { ...objects[id], ...patch } } } }), `${layout}:${id}:${field}`)
+        return
+      }
       commit(parseSceneSettings({ ...current, objects: { ...current.objects, [id]: { ...current.objects[id], ...patch } } }), `${id}:${field}`)
     },
     updateCamera: patch => { const s = get().settings; commit(parseSceneSettings({ ...s, camera: { ...s.camera, ...patch } }), 'camera') },
     setHintColor: hintColor => commit(parseSceneSettings({ ...get().settings, hintColor }), 'hint-color'),
-    resetObject: id => { const s = get().settings, objects = { ...s.objects }; delete objects[id]; commit({ ...s, objects }) },
+    resetObject: id => { const s = get().settings, layout = get().layout, objects = { ...(layout ? s.layouts?.[layout] : s.objects) }; delete objects[id]; commit(layout ? { ...s, layouts: { ...s.layouts, [layout]: objects } } : { ...s, objects }) },
     resetAll: () => commit(structuredClone(DEFAULT_SCENE_SETTINGS)),
     undo: () => {
       const s = get(), settings = s.undoStack.at(-1); if (!settings) return
@@ -60,6 +70,18 @@ export const useSceneEditor = create<EditorState>((set, get) => {
     importSettings: input => commit(parseSceneSettings(input)),
   }
 })
+
+export function useObjectSettings(id: string) {
+  const episode = useSimulationStore(s => s.attempt?.episode)
+  const common = useSceneEditor(s => s.settings.objects[id])
+  const specific = useSceneEditor(s => s.settings.layouts?.[(s.open ? s.layout : episode) ?? '']?.[id])
+  return useMemo(() => specific ? { ...common, ...specific } : common, [common, specific])
+}
+
+export const supportIds = ['bed', 'bedside-cabinet', 'shelf', 'shelf-left']
+export function editorObjectAllowed(id: string) {
+  return !id.startsWith('imported-') && !id.startsWith('wall-') && !['window', 'doctor', 'blanket-on-patient'].includes(id)
+}
 
 /** A drag release may also emit a click on geometry behind the gizmo. */
 export function selectEditorSceneObject(id: string) {

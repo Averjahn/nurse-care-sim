@@ -16,6 +16,27 @@ test('scene configuration round-trips and protects patient pulse scale', () => {
   assert.equal(DEFAULT_SCENE_SETTINGS.camera.position[0], 7.2, 'Defaults must remain immutable')
 })
 
+test('case layouts persist independently with undo and reset', () => {
+  useSceneEditor.setState({ settings: structuredClone(DEFAULT_SCENE_SETTINGS), layout: '', undoStack: [], redoStack: [] })
+  const s = useSceneEditor.getState()
+  s.updateObject('monitor', { scale: 1.2 })
+  s.setLayout('collapse')
+  s.updateObject('monitor', { position: [1, 2, 3] })
+  s.setLayout('abdomen')
+  s.updateObject('monitor', { position: [-1, 2, 3] })
+  let settings = parseSceneSettings(JSON.parse(JSON.stringify(useSceneEditor.getState().settings)))
+  assert.equal(settings.objects.monitor.scale, 1.2)
+  assert.deepEqual(settings.layouts.collapse.monitor.position, [1, 2, 3])
+  assert.deepEqual(settings.layouts.abdomen.monitor.position, [-1, 2, 3])
+  s.resetObject('monitor')
+  assert.equal(useSceneEditor.getState().settings.layouts.abdomen.monitor, undefined)
+  s.undo()
+  settings = useSceneEditor.getState().settings
+  assert.deepEqual(settings.layouts.abdomen.monitor.position, [-1, 2, 3])
+  assert.throws(() => parseSceneSettings({ ...settings, layouts: { unknown: {} } }))
+  s.setLayout('')
+})
+
 test('invalid or unsupported scene imports fail atomically', () => {
   for (const patch of [
     { version: 3 }, { objects: { bed: { scale: -1 } } }, { objects: { bed: { position: [0, NaN, 0] } } },

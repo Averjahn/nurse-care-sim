@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useThree, type ThreeEvent } from '@react-three/fiber'
 import { TransformControls } from '@react-three/drei'
 import { Group, PerspectiveCamera, Vector3, type Object3D } from 'three'
-import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
+import { editorObjectAllowed, selectEditorSceneObject, useObjectSettings, useSceneEditor } from './sceneEditorStore'
 import type { Vec3 } from './sceneSettings'
 import { useObjectHighlight } from './useObjectHighlight'
 
@@ -11,13 +11,13 @@ export function EditableTarget({ id, label, position, rotation, scale, hintScale
 }) {
   const ref = useRef<Group>(null)
   const open = useSceneEditor(s => s.open)
-  const override = useSceneEditor(s => s.settings.objects[id])
+  const override = useObjectSettings(id)
   const target = useSceneEditor(s => s.targets[id])
   useLayoutEffect(() => {
     const object = ref.current!
     object.updateWorldMatrix(true, false)
     const world = object.getWorldPosition(new Vector3())
-    useSceneEditor.getState().register({ id, label, object, position: world.toArray(), localPosition: object.position.toArray(), localScale: object.scale.toArray(), hintScale })
+    if (editorObjectAllowed(id)) useSceneEditor.getState().register({ id, label, object, position: world.toArray(), localPosition: object.position.toArray(), localScale: object.scale.toArray(), hintScale })
     return () => useSceneEditor.getState().unregister(id, object)
   }, [id, label, hintScale])
   useLayoutEffect(() => {
@@ -44,8 +44,11 @@ export function EditableTarget({ id, label, position, rotation, scale, hintScale
 export function EditorPulse({ id, children }: { id: string; children: ReactNode }) {
   const ref = useRef<Group>(null)
   const active = useSceneEditor(s => s.open && s.preview && s.selected === id)
-  const color = useSceneEditor(s => s.settings.objects[id]?.hintColor ?? s.settings.hintColor)
-  const maxScale = useSceneEditor(s => s.settings.objects[id]?.hintScale ?? s.targets[id]?.hintScale ?? 1.3)
+  const settings = useObjectSettings(id)
+  const defaultColor = useSceneEditor(s => s.settings.hintColor)
+  const defaultScale = useSceneEditor(s => s.targets[id]?.hintScale ?? 1.3)
+  const color = settings?.hintColor ?? defaultColor
+  const maxScale = settings?.hintScale ?? defaultScale
   useObjectHighlight(ref, active, false, id === 'patient' ? 0 : maxScale - 1, color)
   return <group ref={ref}><group>{children}</group></group>
 }

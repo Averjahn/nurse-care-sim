@@ -9,7 +9,7 @@ import { HINT_COLOR } from './interactionHighlight'
 import { AnimatedPatient } from './RiggedActors'
 import { EditableTarget, EditorPulse, SceneEditorControls } from './SceneEditor3D'
 import { splitRoomObjects } from './importedRoomObjects'
-import { selectEditorSceneObject, useSceneEditor } from './sceneEditorStore'
+import { selectEditorSceneObject, useObjectSettings, useSceneEditor } from './sceneEditorStore'
 import { useObjectHighlight } from './useObjectHighlight'
 import { MedicalModel } from './MedicalModels'
 import { BedMotionProvider } from './BedMotion'
@@ -578,7 +578,7 @@ function HospitalRoomAsset({
     <>
     <group position={offset} scale={scale}>
       <primitive object={model} />
-      {importedObjects.filter(entry => !['bed', 'imported-cabinet'].includes(entry.id)).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1} visible={editorOpen}>
+      {importedObjects.filter(entry => !['bed', 'imported-cabinet'].includes(entry.id)).map(entry => <EditableTarget key={entry.id} id={entry.id} label={entry.label} position={entry.position} hintScale={1} visible={false}>
         <EditorPulse id={entry.id}><primitive object={entry.object}/></EditorPulse>
       </EditableTarget>)}
     </group>
@@ -625,8 +625,9 @@ function HospitalRoomAsset({
       <EditorPulse id="bedside-cabinet"><group scale={scale}><primitive object={cabinetSource.object}/></group></EditorPulse>
     </EditableTarget>}
     <WallStorageShelf />
+    <WallStorageShelf left />
     <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
-    {(doctorArrived || editorOpen) && <EditableTarget id="doctor" label="Врач" position={[2.9, 0, 1.5]} hintScale={1}><EditorPulse id="doctor">
+    {doctorArrived && <EditableTarget id="doctor" label="Врач" position={[2.9, 0, 1.5]} hintScale={1}><EditorPulse id="doctor">
       <mesh position={[0, 1.1, 0]}><capsuleGeometry args={[0.24, 0.65, 6, 12]}/><meshStandardMaterial color="#f6fcfa"/></mesh>
       <mesh position={[0, 1.75, 0]}><sphereGeometry args={[0.18, 16, 12]}/><meshStandardMaterial color="#dcb297"/></mesh>
       {[-0.13, 0.13].map(x => <mesh key={x} position={[x, 0.43, 0]}><capsuleGeometry args={[0.08, 0.65, 4, 8]}/><meshStandardMaterial color="#537c7a"/></mesh>)}
@@ -790,8 +791,8 @@ const SHELF_X = STORAGE_SHELF_X
 const SHELF_Z = -3.62
 const SHELF_TOP = 1.8
 const SHELF_LOWER = 1.0
-function WallStorageShelf() {
-  return <EditableTarget id="shelf" label="Полка" position={[SHELF_X, 0, SHELF_Z]} hintScale={1.05}><EditorPulse id="shelf">
+function WallStorageShelf({ left = false }: { left?: boolean }) {
+  return <EditableTarget id={left ? 'shelf-left' : 'shelf'} label={left ? 'Полки слева' : 'Полки справа'} position={[left ? -SHELF_X : SHELF_X, 0, SHELF_Z]} hintScale={1.05}><EditorPulse id={left ? 'shelf-left' : 'shelf'}>
     {[SHELF_TOP, SHELF_LOWER].map(height => <group key={height}>
       <mesh position={[0, height - 0.04, 0]} castShadow receiveShadow>
         <boxGeometry args={[2.64, 0.08, 0.66]}/>
@@ -830,19 +831,19 @@ const sceneObjects: SceneObjectPlacement[] = [
   { id: 'ice-pack', position: [2.55, 1.872, -3.62], color: '#79a9c5' },
   { id: 'analgesics', position: [2.96, 1.8325, -3.4], color: '#e8ece4' },
   { id: 'enema-kit', position: [3.6, 1.117, -3.62], color: '#a582a2' },
-  { id: 'food-water', position: [3.7, 1.8, -3.5], color: '#bddbe1' },
+  { id: 'food-water', position: [-3.7, 1.8, -3.5], color: '#bddbe1' },
   // Controls and emergency bell mount to the authored bed's right rail.
   { id: 'bed-controls', position: [.88, 1.23, -1.12], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
   { id: 'call-bell', position: [.88, 1.54, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
-  { id: 'monitor', position: [1.7, 1.725, -2.7], color: '#4b918d' },
+  { id: 'monitor', position: [.65, 2.55, -3.86], color: '#4b918d' },
   { id: 'chart', position: [3.7, SHELF_LOWER + 0.026, SHELF_Z], rotation: [-Math.PI / 2, 0, 0], hitbox: [0.32, 0.44, 0.06], color: '#809c83' },
   { id: 'medications', position: [1.98, SHELF_TOP + 0.075, SHELF_Z], color: '#b57e60' },
   { id: 'oxygen', position: [1.35, .654, -1.2], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
-  { id: 'blanket', position: [2.48, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
-  { id: 'heater', position: [3.48, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
+  { id: 'blanket', position: [-2.48, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
+  { id: 'heater', position: [-3.48, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
   { id: 'sink', position: [-3.75, 1.15, 1.7], rotation: [0, Math.PI / 2, 0], color: '#a3beb9' },
   { id: 'injection', position: [3.89, SHELF_TOP + 0.06, SHELF_Z], rotation: [0, 0, Math.PI / 2], hitbox: [0.15, 0.5, 0.15], color: '#719dac' },
-  { id: 'linen', position: [3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
+  { id: 'linen', position: [-3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
   { id: 'equipment', position: [3.03, SHELF_TOP + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
 ]
 function BedsideInteractions({ targetAction, onAction, patientState }: Pick<RoomSceneProps, 'targetAction' | 'onAction' | 'patientState'>) {
@@ -862,8 +863,10 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
   const editor = useSceneEditor(s => s.open)
   const editorId = id === 'cpr' ? 'patient' : id
   const preview = useSceneEditor(s => s.open && s.preview && s.selected === editorId)
-  const color = useSceneEditor(s => s.settings.objects[editorId]?.hintColor ?? s.settings.hintColor)
-  const maxScale = useSceneEditor(s => s.settings.objects[editorId]?.hintScale ?? 1 + growth)
+  const settings = useObjectSettings(editorId)
+  const defaultColor = useSceneEditor(s => s.settings.hintColor)
+  const color = settings?.hintColor ?? defaultColor
+  const maxScale = settings?.hintScale ?? 1 + growth
   useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' ? 0 : maxScale - 1, color)
   return <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
     onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (useSceneEditor.getState().open) { selectEditorSceneObject(editorId); return }; if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
@@ -885,8 +888,10 @@ function EmergencyObject({ object, highlighted, onAction }: { object: SceneObjec
 function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, patientState }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
   const editorOpen = useSceneEditor(s => s.open)
   const episode = useSimulationStore(s => s.attempt?.episode)
+  const layout = useSceneEditor(s => s.layout)
+  const catalog = useSceneEditor(s => s.catalog)
   return <>
-    {sceneObjects.filter(o => !['call-bell', 'bed-controls'].includes(o.id) && (editorOpen || (objectInCase(o.id, episode) && patientState?.breathing !== false))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => !['call-bell', 'bed-controls'].includes(o.id) && (editorOpen ? catalog || objectInCase(o.id, layout ? layout as Parameters<typeof objectInCase>[1] : undefined) : objectInCase(o.id, episode) && patientState?.breathing !== false)).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }

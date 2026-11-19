@@ -3,6 +3,7 @@ export interface ObjectSettings { position?: Vec3; scale?: number; hintColor?: s
 export interface SceneSettings {
   version: 1
   objects: Record<string, ObjectSettings>
+  layouts?: Record<string, Record<string, ObjectSettings>>
   hintColor: string
   camera: { position: Vec3; target: Vec3; fov: number; eyeHeight: number }
 }
@@ -18,6 +19,14 @@ const color = (v: unknown): v is string => typeof v === 'string' && /^#[\da-f]{6
 export function parseSceneSettings(input: unknown): SceneSettings {
   if (!record(input) || input.version !== 1 || !record(input.objects)) throw new Error('Нужна конфигурация сцены версии 1.')
   const result = structuredClone(DEFAULT_SCENE_SETTINGS)
+  if (input.layouts !== undefined) {
+    if (!record(input.layouts)) throw new Error('Некорректные расстановки.')
+    result.layouts = {}
+    for (const [key, objects] of Object.entries(input.layouts)) {
+      if (!['collapse', 'hypertension', 'chest-pain', 'syncope', 'anaphylaxis', 'abdomen'].includes(key)) throw new Error('Неизвестный кейс.')
+      result.layouts[key] = parseSceneSettings({ version: 1, objects }).objects
+    }
+  }
   if (input.hintColor !== undefined) {
     if (!color(input.hintColor)) throw new Error('Некорректный цвет подсветки.')
     result.hintColor = input.hintColor

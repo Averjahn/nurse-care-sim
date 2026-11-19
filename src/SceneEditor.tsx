@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Camera, Check, Copy, Move3D, Redo2, RotateCcw, Undo2, X } from 'lucide-react'
-import { useSceneEditor } from './sceneEditorStore'
+import { supportIds, useSceneEditor, useObjectSettings } from './sceneEditorStore'
+import { emergencyCases } from './scenario'
 import type { Vec3, SceneSettings } from './sceneSettings'
 import './SceneEditor.css'
 
@@ -20,7 +21,7 @@ export default function SceneEditor() {
   const codeRef = useRef<HTMLTextAreaElement>(null)
   const exported = useMemo(() => JSON.stringify(state.settings, null, 2), [state.settings])
   const target = state.targets[state.selected]
-  const object = state.settings.objects[state.selected] ?? {}
+  const object = useObjectSettings(state.selected) ?? {}
   const color = object.hintColor ?? state.settings.hintColor
   const maxScale = state.selected === 'patient' ? 1 : object.hintScale ?? target?.hintScale ?? 1.3
   const updateCamera = (patch: Partial<SceneSettings['camera']>) => {
@@ -38,8 +39,11 @@ export default function SceneEditor() {
       <div className="editor-history"><span>{state.storageError ? 'Настройки в текущей вкладке' : 'Сохранено в этом браузере'}</span><button className="editor-icon" disabled={!state.undoStack.length} onClick={state.undo} aria-label="Отменить изменение"><Undo2 size={17}/></button><button className="editor-icon" disabled={!state.redoStack.length} onClick={state.redo} aria-label="Повторить изменение"><Redo2 size={17}/></button></div>
       <div className="editor-tabs" role="tablist" aria-label="Раздел настроек"><button role="tab" aria-selected={tab === 'objects'} onClick={() => setTab('objects')}>Объекты</button><button role="tab" aria-selected={tab === 'camera'} onClick={() => setTab('camera')}>Камера</button></div>
       <div className="editor-content">
+        <label className="editor-label">Расстановка<select aria-label="Расстановка кейса" value={state.layout} onChange={e => state.setLayout(e.target.value)}><option value="">Общая для всех кейсов</option>{emergencyCases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
+        <label className="editor-switch"><input type="checkbox" checked={state.catalog} onChange={e => state.setCatalog(e.target.checked)}/> Все доступные предметы и места размещения</label>
+        <p className="editor-help">{state.layout ? 'Изменения сохраняются только для выбранного кейса. Неизменённые предметы наследуют общую расстановку.' : 'Общая расстановка используется как основа для всех кейсов.'}</p>
         {tab === 'objects' ? <>
-          <label className="editor-label">Объект<select aria-label="Объект сцены" value={target ? state.selected : ''} onChange={e => state.select(e.target.value)}><option value="" disabled>Выберите объект в сцене</option>{Object.values(state.targets).sort((a, b) => a.label.localeCompare(b.label, 'ru')).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
+          <label className="editor-label">Объект<select aria-label="Объект сцены" value={target ? state.selected : ''} onChange={e => state.select(e.target.value)}><option value="" disabled>Выберите объект в сцене</option>{[false, true].map(support => <optgroup key={String(support)} label={support ? 'Места размещения' : 'Интерактивные предметы'}>{Object.values(state.targets).filter(t => supportIds.includes(t.id) === support).sort((a, b) => a.label.localeCompare(b.label, 'ru')).map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</optgroup>)}</select></label>
           {target ? <>
             {target.id.startsWith('imported-') && <p className="editor-help">Декоративный объект — скрыт в учебном режиме.</p>}
             <section><div className="editor-section-heading"><h2>Положение</h2><span>метры</span></div><VectorFields label="Положение" lockedX={target.id === 'window'} value={object.position ?? target.position} onChange={position => state.updateObject(target.id, { position }, 'position')} /><p className="editor-help">{target.id === 'window' ? 'Y — высота, Z — вдоль стены. Окно закреплено в проёме.' : 'X — влево/вправо, Y — высота, Z — вперёд/назад.'}</p></section>

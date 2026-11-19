@@ -31,8 +31,8 @@ function DeviceReadout({ value, width, depth, y }: { value: string; width: numbe
   return <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[width, depth]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh>
 }
 function ECGPaper() {
-  const points = useMemo(() => Array.from({ length: 120 }, (_, i) => [-.11 + i / 119 * .22, .085, .29 - pulseWave(i / 119 * 2, 80) * .045] as [number, number, number]), [])
-  return <group><Box size={[.27, .005, .34]} at={[.17, .08, .29]} color="#fff1eb"/><group position={[.17, 0, 0]}><Line points={points} color="#a65369" lineWidth={1}/></group></group>
+  const points = useMemo(() => Array.from({ length: 120 }, (_, i) => [-.11 + i / 119 * .22, .085, .23 - pulseWave(i / 119 * 2, 80) * .045] as [number, number, number]), [])
+  return <group><Box size={[.27, .005, .26]} at={[.17, .08, .23]} color="#fff1eb"/><group position={[.17, 0, 0]}><Line points={points} color="#a65369" lineWidth={1}/></group></group>
 }
 export function MonitorScreen() {
   const attempt = useSimulationStore(s => s.attempt)

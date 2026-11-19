@@ -87,9 +87,11 @@ try {
   await select('call-bell');await action('Срочно вызвать врача')
   assert.notEqual(await evaluate('window.__simulation.getState().attempt.doctorCalledAt'),null)
   await select('patient');await action('Спросить о жалобах');await action('Оценить сознание')
-  await select('bed-controls');await action('Уложить на спину')
+  await select('bed-controls');await action('На спину, согнуть ноги')
   await wait('document.querySelector(".action-panel") === null','Bed choice closes action panel')
   await select('equipment');await action('Отказаться от грелки')
+  await select('thermometer');await action('Измерить температуру')
+  await select('pulseox');await action('Установить датчик')
   await select('monitor');await action('Измерить давление')
   for(let i=0;i<3;i++){await sleep(450);await click('.measurement-game button','Отметить пульсовую волну')}
   await wait('document.querySelector(".observed-vitals").textContent.includes("110")','measured vitals')

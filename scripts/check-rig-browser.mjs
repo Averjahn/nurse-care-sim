@@ -94,7 +94,7 @@ try {
     const expected=current==='missing'||current==='broken'?'fallback':'rigged'
     await wait(`(()=>{let found=false;window.__rigStore.getState().scene.traverse(o=>{if(o.userData.patientRenderer===${JSON.stringify(expected)})found=true});return found})()`,`${current}: ${expected} renderer`)
     if(expected==='rigged'){
-      await wait(`(()=>{let found=false;window.__rigStore.getState().scene.traverse(o=>{if(o.name==='Bed_Head')found=true});return found})()`,'bed bones loaded')
+      await wait(`(()=>{let found=false;window.__rigStore.getState().scene.traverse(o=>{if(o.name==='Bed_Head')found=true});return found})()`,'functional bed sections loaded')
       await evaluate(`window.__simulation.getState().act('semi-sitting')`)
       await wait(`(()=>{let found=false;window.__rigStore.getState().scene.traverse(o=>{if(o.name==='Bed_Head'&&Math.abs(o.quaternion.x)>0.2)found=true});return found})()`,'bed follows semifowler')
     }
@@ -103,7 +103,7 @@ try {
     const snapshot=`(()=>{const values=[];window.__rigStore.getState().scene.traverse(o=>{if(o.type==='Bone')values.push(...o.quaternion.toArray());if(o.morphTargetInfluences)values.push(...o.morphTargetInfluences);if(o.userData.patientRenderer==='fallback')o.traverse(child=>values.push(...child.quaternion.toArray(),...child.scale.toArray()))});return values})()`
     const before=await evaluate(snapshot);await sleep(350);assert.deepEqual(await evaluate(snapshot),before,`${current}: pause freezes bones and morphs`)
     if(current==='broken') await shot('fallback-after-corrupt-glb')
-    console.log(`Rig browser: ${current} → ${expected}; pause frozen${expected==='rigged'?'; bed bones connected':''}`)
+    console.log(`Rig browser: ${current} → ${expected}; pause frozen${expected==='rigged'?'; bed sections connected':''}`)
   }
   // The corrupt-response case intentionally exercises loader errors; only the
   // two injected file failures are expected. All other exceptions fail QA.
@@ -116,7 +116,7 @@ try {
   }
   throw error
 } finally {
-  ws?.close(); chrome.kill('SIGTERM')
+  ws?.close(); chrome.kill('SIGTERM'); chrome.stderr.destroy(); chrome.unref()
   await sleep(300)
   await fs.rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 })
 }

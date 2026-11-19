@@ -29,3 +29,5 @@ public/models/patient-rigged.glb is a locally prepared derivative: draft skeleta
 procedural animation clips, breathing/compression morphs, 2K texture export.
 No third-party mocap or new paid generation was used for this derivative.
 The source's usage rights are those of the owner-supplied Tripo asset; no CC license is asserted here.
+
+New simulation equipment and functional bed: procedural geometry authored in src/MedicalModels.tsx and src/RoomScene.tsx for this project, without third-party branding or downloaded device meshes. Pulse/ECG graphics are synthetic educational traces, not diagnostic recordings.

@@ -68,7 +68,7 @@ test('hypertension requires baseline and can branch to chest pain', () => {
   assert.equal(branch.episode, 'chest-pain'); assert.equal(branch.patient.complaint, 'chestPain')
 })
 test('prolonged syncope branches to collapse after positioning', () => {
-  let a = act(called('syncope', { variant: 'prolonged' }), 'legs-up', 'airway')
+  let a = act(called('syncope', { variant: 'prolonged' }), 'check-injury', 'transfer', 'legs-up', 'airway')
   a = tickAttempt(a, 30)
   assert.equal(a.episode, 'collapse'); assert.ok(requiredActions(a).includes('prepare-iv'))
 })
@@ -157,7 +157,7 @@ test('store reset isolates attempts, and exam mode cannot be paused', async () =
 
 test('training hints prioritize calling help and repeat measurement before charting', () => {
   assert.equal(nextObject(createAttempt('collapse')), 'call-bell')
-  let a = act(called('abdomen'), 'talk', 'inspect', 'measure', 'supine', 'avoid-intervention')
+  let a = act(called('abdomen'), 'talk', 'inspect', 'measure', 'temperature', 'saturation', 'knees-up', 'avoid-intervention')
   assert.notEqual(a.stableAt, null)
   assert.equal(nextObject(a), 'monitor')
   a = act(a, 'measure')
@@ -205,7 +205,7 @@ test('asset failures, missing skin and missing clips select the fallback', () =>
   assert.equal(patientRenderer(true,validatePatientRig(goodRig()),true),'fallback')
   assert.equal(patientRenderer(false,null),'fallback')
   assert.equal(patientRenderer(true,validatePatientRig(goodRig())),'rigged')
-  for(const clip of completeClips) assert.equal(validatePatientRig({...goodRig(),clips:completeClips.filter(c=>c!==clip)}).ok,false)
+  for(const clip of completeClips.filter(c => c !== 'knees_flexed_idle')) assert.equal(validatePatientRig({...goodRig(),clips:completeClips.filter(c=>c!==clip)}).ok,false)
 })
 function animationFixture() {
   const root=new Object3D();root.value=0

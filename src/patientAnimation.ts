@@ -1,10 +1,10 @@
 import type { PatientState } from './simulation.ts'
 
-export const PATIENT_POSES = ['lying', 'semifowler', 'sitting_edge', 'legs_elevated', 'collapsed', 'arrest'] as const
+export const PATIENT_POSES = ['lying', 'semifowler', 'sitting_edge', 'legs_elevated', 'collapsed', 'arrest', 'knees_flexed'] as const
 export type PatientPose = typeof PATIENT_POSES[number]
 export const CROSSFADE_SECONDS = 0.4
 export const POSE_CLIPS: Record<PatientPose, string> = {
-  lying: 'lying_idle', semifowler: 'semifowler_idle', sitting_edge: 'sit_edge_idle',
+  knees_flexed: 'knees_flexed_idle', lying: 'lying_idle', semifowler: 'semifowler_idle', sitting_edge: 'sit_edge_idle',
   legs_elevated: 'legs_elevated_idle', collapsed: 'collapsed_idle', arrest: 'arrest_idle',
 }
 export const CORE_TRANSITION_CLIPS = ['lying_to_sit_edge', 'sit_edge_to_lying', 'faint_from_sit'] as const
@@ -13,8 +13,8 @@ export const BED_BONES = ['Bed_Head', 'Bed_Knee', 'Bed_FootEnd'] as const
 export type PatientMorph = typeof PATIENT_MORPHS[number]
 export function patientPose(patient: PatientState): PatientPose {
   if (!patient.breathing) return 'arrest'
-  if (patient.consciousness === 'lost' || (patient.consciousness === 'dim' && patient.position === 'sitting')) return 'collapsed'
-  return ({ supine: 'lying', semiSitting: 'semifowler', sitting: 'sitting_edge', legsUp: 'legs_elevated' } as const)[patient.position]
+  if ((patient.consciousness === 'lost' && ['supine', 'sitting'].includes(patient.position)) || (patient.consciousness === 'dim' && patient.position === 'sitting')) return 'collapsed'
+  return ({ supine: 'lying', semiSitting: 'semifowler', sitting: 'sitting_edge', legsUp: 'legs_elevated', kneesUp: 'knees_flexed' } as const)[patient.position]
 }
 const transitions: Partial<Record<PatientPose, Partial<Record<PatientPose, string>>>> = {
   lying: { semifowler: 'lying_to_semifowler', sitting_edge: 'lying_to_sit_edge', legs_elevated: 'lying_to_legs_elevated', collapsed: 'collapse_from_lying' },
@@ -43,7 +43,7 @@ export function animationTimeScale(speed: number, paused: boolean, compression =
   return paused ? 0 : compression ? 1 : [1, 2, 4].includes(speed) ? speed : 1
 }
 export function bedAngles(pose: PatientPose): Record<typeof BED_BONES[number], number> {
-  return { Bed_Head: pose === 'semifowler' ? Math.PI / 4 : 0, Bed_Knee: pose === 'legs_elevated' ? 0.12 : 0, Bed_FootEnd: pose === 'legs_elevated' ? -0.28 : 0 }
+  return { Bed_Head: pose === 'semifowler' ? Math.PI / 4 : 0, Bed_Knee: pose === 'knees_flexed' ? -.65 : pose === 'legs_elevated' ? 0.12 : 0, Bed_FootEnd: pose === 'legs_elevated' ? -0.28 : 0 }
 }
 export function patientMorphs(patient: PatientState, breathingTime: number): Record<PatientMorph, number> {
   const distressed = patient.complaint !== 'none' && !patient.chestPainRelieved
@@ -66,7 +66,7 @@ export function validatePatientRig(inventory: RigInventory): RigValidation {
   const bones = new Set(inventory.bones.map(normalizedBoneName))
   for (const bone of ['hips', 'spine', 'head']) if (!bones.has(bone)) errors.push(`Не найдена кость ${bone}.`)
   if (new Set(inventory.bones).size > 65) errors.push('Число костей превышает 65.')
-  for (const clip of [...Object.values(POSE_CLIPS), ...CORE_TRANSITION_CLIPS, 'compression']) if (!inventory.clips.includes(clip)) errors.push(`Отсутствует клип ${clip}.`)
+  for (const clip of [...Object.values(POSE_CLIPS).filter(name => name !== 'knees_flexed_idle'), ...CORE_TRANSITION_CLIPS, 'compression']) if (!inventory.clips.includes(clip)) errors.push(`Отсутствует клип ${clip}.`)
   for (const morph of PATIENT_MORPHS) if (!inventory.morphs?.includes(morph)) warnings.push(`Нет морфа ${morph}: соответствующий эффект будет пропущен.`)
   return { ok: errors.length === 0, errors, warnings }
 }

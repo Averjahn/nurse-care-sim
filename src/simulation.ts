@@ -4,12 +4,14 @@ export type Complaint = 'none' | 'chestPain' | 'headacheVision' | 'weakDizzy' | 
 export type Route = 'none' | 'subcutaneous' | 'intramuscular' | 'intravenous'
 export interface PatientState {
   tempC: number
+  spo2: number
+  location: 'bed' | 'sink'
   sbp: number
   habitualSbp: number
   pulse: number
   consciousness: 'ok' | 'dim' | 'lost'
   complaint: Complaint
-  position: 'supine' | 'semiSitting' | 'sitting' | 'legsUp'
+  position: 'supine' | 'semiSitting' | 'sitting' | 'legsUp' | 'kneesUp'
   skin: 'normal' | 'pale' | 'flushed' | 'coldSweat' | 'rash'
   nitroDoses: number
   chestPainRelieved: boolean
@@ -19,7 +21,7 @@ export interface PatientState {
   breathing: boolean
   anxiety: number
 }
-export interface Measurement { at: number; sbp: number; pulse: number; tempC: number }
+export interface Measurement { at: number; sbp: number; pulse: number }
 export interface Mistake { action: ActionId; severity: Severity; why: string; at: number; stage: Stage }
 export interface Event { at: number; text: string; kind: 'action' | 'patient' | 'system' | 'error' }
 export interface Attempt {
@@ -35,6 +37,7 @@ export interface Attempt {
   completed: ActionId[]
   errors: Mistake[]
   events: Event[]
+  temperatureMeasurement: { at: number; value: number } | null
   measurement: Measurement | null
   repeatMeasurement: Measurement | null
   baselineRead: boolean
@@ -67,16 +70,17 @@ export interface AttemptOptions {
   nitroMinSbp?: number | null
 }
 export const basePatient: PatientState = {
-  tempC: 37, sbp: 120, habitualSbp: 120, pulse: 80, consciousness: 'ok', complaint: 'none', position: 'supine', skin: 'normal', nitroDoses: 0, chestPainRelieved: false, injectionRoute: 'none', doctorCalled: false, secondsSinceOnset: 0, breathing: true, anxiety: 3,
+  spo2: 97, location: 'bed', tempC: 37, sbp: 120, habitualSbp: 120, pulse: 80, consciousness: 'ok', complaint: 'none', position: 'supine', skin: 'normal', nitroDoses: 0, chestPainRelieved: false, injectionRoute: 'none', doctorCalled: false, secondsSinceOnset: 0, breathing: true, anxiety: 3,
 }
 const pick = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)]
 export function createAttempt(caseId: CaseId, options: AttemptOptions = {}): Attempt {
   const c = getCase(caseId)
-  const variant = options.variant ?? (caseId === 'chest-pain' ? pick(['responsive', 'persistent']) : caseId === 'syncope' ? pick(['brief', 'prolonged']) : caseId === 'collapse' ? pick(['fever', 'bleeding', 'medication']) : 'default')
+  const variant = options.variant ?? (caseId === 'chest-pain' ? pick(['responsive', 'persistent']) : caseId === 'syncope' ? pick(['brief', 'prolonged']) : caseId === 'collapse' ? 'fever' : 'default')
   const patient = { ...basePatient, ...c.initial }
+  if (caseId === 'syncope') patient.location = 'sink'
   if (caseId === 'anaphylaxis') patient.injectionRoute = options.route ?? pick<Route>(['subcutaneous', 'intramuscular', 'intravenous'])
   return {
-    id: globalThis.crypto.randomUUID(), caseId, episode: caseId, variant, mode: options.mode ?? 'training', speed: options.speed ?? 1, paused: false, phase: 'active', patient, completed: [], errors: [], events: [{ at: 0, text: c.cue, kind: 'patient' }], measurement: null, repeatMeasurement: null, baselineRead: false, doctorCalledAt: null, doctorArrived: false, teamCalledAt: null, teamArrived: false, firstCorrectAt: null, lastNitroAt: -1, nitroMinSbp: options.nitroMinSbp ?? null, nitroGivenAt: null, stableAt: null, positionedAt: null, arrestAt: null, chestSelected: false, compressions: 0, goodCompressions: 0, lastCompressionAt: null, cycleCompressions: 0, ventilations: 0, cprStartedAt: null, outcome: '', feedback: 'Эпизод начался. Кнопка вызова врача доступна всегда: H.',
+    id: globalThis.crypto.randomUUID(), caseId, episode: caseId, variant, mode: options.mode ?? 'training', speed: options.speed ?? 1, paused: false, phase: 'active', patient, completed: [], errors: [], temperatureMeasurement: null, events: [{ at: 0, text: c.cue, kind: 'patient' }], measurement: null, repeatMeasurement: null, baselineRead: false, doctorCalledAt: null, doctorArrived: false, teamCalledAt: null, teamArrived: false, firstCorrectAt: null, lastNitroAt: -1, nitroMinSbp: options.nitroMinSbp ?? null, nitroGivenAt: null, stableAt: null, positionedAt: null, arrestAt: null, chestSelected: false, compressions: 0, goodCompressions: 0, lastCompressionAt: null, cycleCompressions: 0, ventilations: 0, cprStartedAt: null, outcome: '', feedback: 'Эпизод начался. Кнопка вызова врача доступна всегда: H.',
   }
 }
 export const elapsed = (a: Attempt) => a.patient.secondsSinceOnset
@@ -100,9 +104,14 @@ export function requiredActions(a: Attempt): ActionId[] {
   if (a.episode === 'anaphylaxis') required.push(a.patient.injectionRoute === 'intravenous' ? 'stop-infusion' : 'stop-trigger')
   if (a.episode === 'chest-pain') {
     required.push(a.completed.includes('nitro') ? 'nitro' : 'withhold-nitro')
-    if (a.variant === 'persistent' && a.completed.includes('pain-response')) required.push('call-team', 'oxygen')
+    if (a.variant === 'persistent' && a.completed.includes('pain-response')) required.push('call-team')
   }
+  if (a.patient.spo2 < 90 && !required.includes('oxygen')) required.push('oxygen')
   if (a.episode === 'collapse' && a.variant === 'bleeding') required.push('stop-bleeding')
+  if (a.episode === 'anaphylaxis') {
+    const urgent: ActionId[] = ['call-doctor', 'call-team', 'inspect', a.patient.injectionRoute === 'intravenous' ? 'stop-infusion' : 'stop-trigger', 'legs-up', 'protocol', 'adrenaline', 'oxygen']
+    return [...urgent, ...required.filter(id => !urgent.includes(id))]
+  }
   return required
 }
 const treatment = (a: Attempt) => requiredActions(a).filter(id => [3, 4].includes(actionById(id).stage))
@@ -164,16 +173,23 @@ export function tickAttempt(previous: Attempt, deltaSec: number): Attempt {
     return a
   }
   if (a.arrestAt !== null) return a
-  if (a.caseId === 'collapse' && a.variant === 'fever') a.patient.tempC = Math.max(36.2, 39.2 - now * 0.1)
+  if (a.completed.includes('oxygen') && a.patient.breathing && a.patient.spo2 < 96) a.patient.spo2 = Math.min(96, a.patient.spo2 + deltaSec * .5)
+  if (a.episode === 'hypertension' && a.measurement && before < a.measurement.at + 900 && now >= a.measurement.at + 900) {
+    a.feedback = 'Прошло 15 минут с измерения АД. Повторите контроль; при ухудшении измеряйте раньше.'
+    log(a, a.feedback)
+  }
+  if (a.caseId === 'collapse' && a.variant === 'fever') a.patient.tempC = Math.max(35.7, 39.2 - now * 0.1)
   if (a.episode === 'syncope' && a.positionedAt !== null && a.variant === 'brief' && now - a.positionedAt >= 25 && a.completed.includes('airway')) {
     if (a.patient.consciousness !== 'ok') log(a, 'В горизонтальном положении сознание вернулось. Продолжайте наблюдение.', 'patient')
     a.patient.consciousness = 'ok'
+    a.patient.sbp = 112
+    a.patient.pulse = 88
   }
   if (a.episode === 'syncope' && a.variant === 'prolonged' && a.positionedAt !== null && now - a.positionedAt >= 30) {
     a.episode = 'collapse'; a.variant = 'orthostatic'; a.patient.consciousness = 'dim'
     log(a, 'Сознание не восстановилось за игровое окно наблюдения. Продолжайте помощь при коллапсе.')
   }
-  if (a.episode === 'hypertension' && before < 75 && now >= 75 && !a.completed.includes('captopril')) transitionToChest(a)
+  if (a.episode === 'hypertension' && a.stableAt === null && before < 75 && now >= 75 && !a.completed.includes('captopril')) transitionToChest(a)
   maybeStable(a)
   if (a.stableAt === null) {
     if (now >= 180) {
@@ -245,11 +261,25 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
     log(a, step.title, 'action'); return a
   }
   // Any rejected action leaves the patient and completion flags unchanged.
+  if (action === 'prepare-iv' && !a.completed.includes('protocol')) return fail('major', 'Сначала сверьте учебное назначение. Инфузия не начинается самостоятельно.')
+  if (action === 'captopril' && a.completed.includes('captopril')) return fail('major', 'Повторная доза требует нового назначения и контроля АД. Не пытайтесь резко снижать давление.')
+  if (action === 'ecg' && !a.completed.includes('attach-electrodes')) return fail('major', 'Сначала наложите электроды, затем снимите ЭКГ.')
+  if (action === 'oxygen' && a.episode === 'chest-pain' && p.spo2 >= 90) return fail('minor', 'При SpO₂ ≥ 90% без дыхательной недостаточности рутинный кислород при ОКС не показан.')
+  if (action === 'oxygen' && !a.completed.includes('saturation') && a.episode !== 'anaphylaxis') return fail('major', 'Подключите пульсоксиметр для оценки и контроля кислорода.')
+  if (action === 'transfer' && !a.completed.includes('check-injury')) return fail('major', 'Сначала оцените безопасность и признаки травмы; при подозрении на травму вызывайте помощь без самостоятельного перемещения.')
+  if (['supine', 'legs-up', 'knees-up'].includes(action) && p.location === 'sink') return fail('major', 'Сначала организуйте безопасное перемещение на кровать с персоналом.')
+  if (action === 'remove-catheter' && a.episode === 'anaphylaxis') return fail('critical', 'Не удаляйте катетер при шоке: остановите введение аллергена и сохраните венозный доступ.')
+  if (action === 'antipyretic' && a.episode === 'collapse') return fail('critical', 'При падении температуры и гипотонии жаропонижающее не устраняет причину коллапса.')
+  if (action === 'multiple-drugs') return fail('critical', 'Нельзя резко снижать АД несколькими препаратами без назначения и контроля.')
+  if (action === 'self-analgesia') return fail('major', 'Самостоятельное введение без назначения недопустимо. Запросите обезболивание: его не следует откладывать только ради сохранения симптомов.')
+  if (action === 'food' && a.episode === 'abdomen') return fail('major', 'До оценки врача не предлагайте еду при неясной острой боли в животе.')
+  if (action === 'ice' && (a.episode !== 'abdomen' || !a.doctorArrived)) return fail('minor', 'Холод не является обязательным лечением. Подготовьте его только по решению осмотревшего врача, через ткань.')
+  if (action === 'supine' && a.episode === 'hypertension') return fail('major', 'В этом эпизоде выберите удобное полусидячее положение 30–45°. Дальнейшие назначения определяет врач.')
   if ((action === 'heat' || action === 'enema') && a.episode === 'abdomen') return fail('critical', 'При острой боли в животе неясной причины грелка и клизма запрещены. Сообщите врачу.')
   if (action === 'heat' && ['bleeding', 'trauma'].includes(a.variant)) return fail('critical', 'При кровотечении или травме грелка небезопасна. Сначала остановите кровотечение и вызовите помощь.')
   if (action === 'heat' && p.consciousness === 'lost') return fail('critical', 'Грелка при отсутствии сознания небезопасна: риск ожога.')
   if (action === 'rub' && ['bleeding', 'trauma'].includes(a.variant)) return fail('critical', 'При кровотечении или травме растирание и массаж живота запрещены.')
-  if (['sitting', 'semi-sitting'].includes(action) && ['collapse', 'syncope', 'anaphylaxis'].includes(a.episode)) return fail('critical', 'При этом состоянии нельзя оставлять пациентку сидя. Выберите безопасное горизонтальное положение.')
+  if (['sitting', 'semi-sitting'].includes(action) && (['collapse', 'syncope'].includes(a.episode) || (a.episode === 'anaphylaxis' && (p.sbp < 90 || action === 'sitting')))) return fail('critical', 'При этом состоянии нельзя оставлять пациентку сидя. Выберите безопасное горизонтальное положение.')
   if (action === 'stop-infusion' && (a.episode !== 'anaphylaxis' || p.injectionRoute !== 'intravenous')) return fail('major', 'В текущем эпизоде нет внутривенной инфузии, которую требуется остановить. Проверьте путь исходного препарата.')
   if (action === 'stop-trigger' && (a.episode !== 'anaphylaxis' || p.injectionRoute === 'intravenous')) return fail('major', 'Проверьте путь исходного препарата: при внутривенном введении нужно прекратить именно инфузию.')
   if (action === 'continue-infusion' && a.episode === 'anaphylaxis') return fail('critical', 'Продолжение введения предполагаемого аллергена опасно. Немедленно прекратите введение.')
@@ -279,13 +309,19 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
     case 'talk': log(a, patientCue(a), 'patient'); break
     case 'inspect': a.feedback = `Сознание: ${consciousnessLabels[p.consciousness]}. Кожа: ${skinLabels[p.skin]}. ${p.breathing ? 'Дыхание сохранено.' : 'Нормального дыхания нет.'}`; break
     case 'repeat-measure': case 'measure': {
-      const value = { at: now, sbp: p.sbp, pulse: p.pulse, tempC: Math.round(p.tempC * 10) / 10 }
+      const value = { at: now, sbp: p.sbp, pulse: p.pulse }
       a.measurement = value
+      complete(a, 'connect-monitor')
       if (a.stableAt !== null) { a.repeatMeasurement = value; complete(a, 'repeat-measure') }
-      a.feedback = `Измерено: САД ${value.sbp} мм рт. ст., пульс ${value.pulse}/мин, T ${value.tempC} °C.`
+      a.feedback = `Измерено: САД ${value.sbp} мм рт. ст., пульс ${value.pulse}/мин. Температура измеряется отдельным термометром.`
       break
     }
     case 'baseline': a.baselineRead = true; a.feedback = `В температурном листе: привычное САД ${p.habitualSbp} мм рт. ст., пульс 80/мин. Текущие значения узнаются только измерением.`; break
+    case 'temperature': a.temperatureMeasurement = { at: now, value: Math.round(p.tempC * 10) / 10 }; a.feedback = `Термометр: ${p.tempC.toFixed(1)} °C.`; break
+    case 'saturation': a.feedback = `Датчик установлен: SpO₂ ${Math.round(p.spo2)}%.`; break
+    case 'connect-monitor': a.feedback = 'Монитор подключён: непрерывный контроль пульса и SpO₂, АД — отдельными измерениями.'; break
+    case 'transfer': p.location = 'bed'; p.position = 'supine'; break
+    case 'knees-up': p.position = 'kneesUp'; break
     case 'supine': p.position = 'supine'; break
     case 'legs-up': p.position = 'legsUp'; a.positionedAt ??= now; break
     case 'semi-sitting': p.position = 'semiSitting'; break
@@ -299,7 +335,7 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
       break
     case 'pain-response':
       if (a.completed.includes('nitro') && a.variant === 'responsive') a.feedback = 'Боль уменьшилась. Это не устанавливает диагноз: ЭКГ и оценка врача всё равно нужны.'
-      else { a.variant = 'persistent'; a.feedback = 'Боль сохраняется. Подозрение на ОКС: строгий покой, ЭКГ, реанимационная бригада и кислород по протоколу.' }
+      else { a.variant = 'persistent'; a.feedback = 'Боль сохраняется. Подозрение на ОКС: строгий покой, ЭКГ и реанимационная бригада; кислород — при гипоксемии.' }
       log(a, a.feedback, 'patient'); break
     case 'stop-bleeding': case 'stop-infusion': case 'stop-trigger': a.feedback = a.episode === 'anaphylaxis' ? `Триггер устранён. Путь исходной инъекции: ${routeLabels[p.injectionRoute]}. Адреналин вводят внутримышечно независимо от пути триггера.` : 'Начата остановка видимого наружного кровотечения прямым давлением. Врач вызван.'; break
     case 'protocol': a.feedback = 'Учебное назначение сверено: показание, аллергии, сознание, актуальные показатели и способ введения. Дозы в симуляторе не задаются.'; break
@@ -307,7 +343,7 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
     default: break
   }
   complete(a, action)
-  if (!['inspect', 'measure', 'repeat-measure', 'baseline', 'pain-response', 'stop-infusion', 'stop-trigger', 'stop-bleeding', 'protocol', 'handoff'].includes(action)) a.feedback = `${step.title}: выполнено.`
+  if (!['temperature', 'saturation', 'connect-monitor', 'inspect', 'measure', 'repeat-measure', 'baseline', 'pain-response', 'stop-infusion', 'stop-trigger', 'stop-bleeding', 'protocol', 'handoff'].includes(action)) a.feedback = `${step.title}: выполнено.`
   log(a, a.feedback, 'action')
   maybeStable(a)
   return a
@@ -315,7 +351,7 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
 export const consciousnessLabels = { ok: 'ясное', dim: 'заторможена', lost: 'нет реакции' }
 export const skinLabels = { normal: 'обычная', pale: 'бледная', flushed: 'покраснение', coldSweat: 'холодный липкий пот', rash: 'сыпь' }
 export const routeLabels: Record<Route, string> = { none: 'нет', subcutaneous: 'подкожный', intramuscular: 'внутримышечный', intravenous: 'внутривенный' }
-export const positionLabels = { supine: 'на спине', semiSitting: 'полусидя', sitting: 'сидя на краю', legsUp: 'ноги приподняты' }
+export const positionLabels = { supine: 'на спине', semiSitting: 'полусидя', sitting: 'сидя на краю', legsUp: 'ноги приподняты', kneesUp: 'на спине, колени согнуты' }
 export function stageScores(a: Attempt): number[] {
   return ([1, 2, 3, 4, 5] as Stage[]).map(stage => {
     const required = requiredActions(a).filter(id => actionById(id).stage === stage)

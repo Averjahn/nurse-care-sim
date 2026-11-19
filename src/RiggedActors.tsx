@@ -9,6 +9,7 @@ import { applyRigMorphs, applyRigSkin, bindRigClips, cleanRigClothing, cloneRigM
 import { CompressionPlayback, RigPlayback } from './rigPlayback'
 import type { PatientState } from './simulation'
 import { EditableTarget, EditorPulse } from './SceneEditor3D'
+import { PatientAccessories } from './MedicalModels'
 import { installPatientPicking } from './patientPicking'
 
 const ROOT = import.meta.env.BASE_URL
@@ -61,6 +62,17 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
     const materials = cloneRigMaterials(object)
     try {
       const clips = bindRigClips(object, mergeRigClips(loaded[0].animations, loaded[1]?.animations ?? []))
+      const lying = clips.find(c => c.name === 'lying_idle')
+      if (lying && !clips.some(c => c.name === 'knees_flexed_idle')) {
+        const knees = lying.clone(); knees.name = 'knees_flexed_idle'
+        for (const track of knees.tracks) {
+          const angle = /(?:Left|Right)UpLeg.*quaternion/.test(track.name) ? -.65 : /(?:Left|Right)Leg.*quaternion/.test(track.name) ? 1.3 : null
+          if (angle === null) continue
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle)
+          for (let i = 0; i < track.values.length; i += 4) q.toArray(track.values, i)
+        }
+        clips.push(knees)
+      }
       const result = validatePatientRig(rigInventory(object, clips))
       if (!result.ok) throw new Error(result.errors.join(' '))
       installPatientPicking(object)
@@ -113,7 +125,7 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
     applyRigMorphs(prepared.morphMeshes, targets, prepared.compression[0], compressing)
     applyRigSkin(prepared.skin, patient.skin)
   })
-  return <primitive object={prepared.object} dispose={null}/>
+  return <><primitive object={prepared.object} dispose={null}/><PatientAccessories object={prepared.object}/></>
 }
 
 export function AnimatedBed({ patient, clock, onReady }: { patient?: PatientState; clock: AnimationClock; onReady: (ready: boolean) => void }) {

@@ -47,7 +47,7 @@ interface RoomSceneProps {
   onPointerLockError: () => void
 }
 
-const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/gradd-hospital-room.glb`
+const ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/ward-room-neutral.glb`
 const GENERATED_ROOM_MODEL_URL = `${import.meta.env.BASE_URL}models/hospital-room-generated.glb`
 const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb?v=2`
 const PATIENT_REAL_WORLD_SCALE = 1

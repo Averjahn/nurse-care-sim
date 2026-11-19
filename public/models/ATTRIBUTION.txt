@@ -3,7 +3,17 @@ https://poly.pizza/m/9sUalfQ76kn
 Licensed under Creative Commons Attribution 3.0 (CC BY 3.0):
 https://creativecommons.org/licenses/by/3.0/
 
-The model is included in this project as public/models/gradd-hospital-room.glb.
+Original source is preserved as public/models/gradd-hospital-room.glb.
+The simulator displays public/models/ward-room-neutral.glb, a modified derivative
+prepared by nurse-care-sim on 2026-11-19. Changes: original manufacturer-bearing
+texture maps removed, neutral material palette, newly authored chamfered bed
+endboards and trims, generic standby monitor panel, pressure-unit enclosure and
+buttons, tapered waste container and rounded lid. The generic biohazard warning
+texture is retained; it is a safety symbol, not a manufacturer logo.
+Original embedded texture credits include Brady Arnold. These credits are
+retained here even where original texture artwork was replaced.
+This derivative does not claim to be an independently authored original model.
+Rebuild: node scripts/prepare-neutral-room.mjs.
 
 Animation decoding (no new character/mocap assets are bundled):
 Draco decoder by Google, Apache License 2.0: https://github.com/google/draco

@@ -68,7 +68,7 @@ npm run preview
 
 ## 3D-модель палаты
 
-Пока новая модель не создана, сцена использует [GRADD Hospital Room by GRADD CO](https://poly.pizza/m/9sUalfQ76kn) из `public/models/gradd-hospital-room.glb` как резервную. Автор и лицензия: [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Требуемая атрибуция сохранена в `public/models/ATTRIBUTION.txt` и показана в интерфейсе в разделе «Источники и методика». После успешной генерации сцена автоматически выберет `public/models/hospital-room-generated.glb` при следующей загрузке.
+Палата использует `public/models/ward-room-neutral.glb`: переработанный вариант [GRADD Hospital Room by GRADD CO](https://poly.pizza/m/9sUalfQ76kn), CC BY 3.0. Исходный GLB сохранён. Сняты текстуры производителей, изменены торцы кровати, корпуса приборов и контейнера, добавлены нейтральные панели и единая цветовая схема. Предупреждение о биологической опасности сохранено. Авторство, исходные текстурные кредиты Brady Arnold и описание изменений указаны в `public/models/ATTRIBUTION.txt`; ссылка доступна в меню. Это производный ассет с сохранением атрибуции, а не заявление о полностью самостоятельной модели. Пересборка: `node scripts/prepare-neutral-room.mjs`. Опциональный `hospital-room-generated.glb` при наличии по-прежнему имеет приоритет.
 
 Для генерации новой детализированной палаты через [Tripo3D H3.1 в GenAPI](https://gen-api.ru/model/tripo-3d) укажите действующий API-ключ в `nurse-care-sim/.env.local` (формат ключа из актуальной документации — `sk_...`), затем выполните:
 

@@ -85,9 +85,7 @@ function App() {
   const { attempt, start, act, tick, leave } = useSimulationStore()
   const [selectedCase, setSelectedCase] = useState<CaseId>('collapse')
   const [mode, setMode] = useState<'training' | 'exam'>('training')
-  const [speed, setSpeed] = useState(1)
   const [nitroThreshold, setNitroThreshold] = useState('')
-  const [caseVariant, setCaseVariant] = useState('')
   const [selectedObject, setSelectedObject] = useState<ObjectId | null>(null)
   const [actionPoint, setActionPoint] = useState<[number, number, number] | null>(null)
   const actionPanelRef = useRef<HTMLElement>(null)
@@ -221,10 +219,7 @@ function App() {
   }, [heldItem])
   const begin = (id = selectedCase) => {
     if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt)
-    const variant = caseVariant.startsWith(`${id}:`) ? caseVariant.slice(id.length + 1) : ''
-    start(id, { mode, speed, nitroMinSbp: nitroThreshold ? Number(nitroThreshold) : null,
-      variant: ['brief', 'prolonged', 'refractory', 'responsive', 'persistent'].includes(variant) ? variant : undefined,
-      neuroSigns: variant === 'neuro', captoprilRisk: variant === 'contra', nitrateRisk: variant === 'nitrate' })
+    start(id, { mode, speed: 1, nitroMinSbp: nitroThreshold ? Number(nitroThreshold) : null })
     setSelectedObject(null); setAcknowledgedHint(null); setFirstPerson(false); setHeldItem('')
   }
   const backToMenu = () => { if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt); unlock(); setFirstPerson(false); leave(); setSelectedObject(null) }
@@ -259,11 +254,10 @@ function App() {
       {active && <div className="header-actions"><button className="hud-button glass-panel" onClick={() => { unlock(); setSelectedObject(null); setFirstPerson(value => !value) }}>{firstPerson ? 'Обзор палаты' : 'От первого лица'}</button></div>}
     </header>}
     {!attempt && !editorOpen && <section className="scenario-picker glass-panel">
-      <div className="picker-intro"><span className="eyebrow">ПРАКТИКА ПРИНЯТИЯ РЕШЕНИЙ</span><h1>Увидеть. Позвать.<br/>Помочь вовремя.</h1><p>Одна палата, шесть экстренных эпизодов. Состояние меняется само — ваши действия определяют дальнейший ход.</p></div>
+      <div className="picker-intro"><span className="eyebrow">ПРАКТИКА ПРИНЯТИЯ РЕШЕНИЙ</span><h1>Увидеть. Позвать.<br/>Помочь вовремя.</h1></div>
       <div className="case-grid">{emergencyCases.map((c, index) => <button key={c.id} className={`case-card ${selectedCase === c.id ? 'selected' : ''}`} onClick={() => setSelectedCase(c.id)} aria-pressed={selectedCase === c.id}><span className="case-number">0{index + 1}</span><strong>{c.title}</strong><span>{c.description}</span></button>)}</div>
-      <div className="setup-row"><label>Режим<select value={mode} onChange={e => setMode(e.target.value as typeof mode)}><option value="training">Обучение · подсказки</option><option value="exam">Экзамен · без подсказок</option></select></label><label>Игровое время<select value={speed} onChange={e => setSpeed(Number(e.target.value))}><option value={1}>1× · реальное время</option><option value={2}>2× · ускоренно</option><option value={4}>4× · ускоренно</option></select></label>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
-      <details><summary>Вариант эпизода для преподавателя</summary><label>Вариант<select aria-label="Вариант эпизода" value={caseVariant.startsWith(`${selectedCase}:`) ? caseVariant : ''} onChange={e => setCaseVariant(e.target.value)}><option value="">Основной / случайный вариант</option>{(selectedCase === 'hypertension' ? [['neuro', 'Неврологические симптомы'], ['contra', 'Противопоказания к каптоприлу']] : selectedCase === 'chest-pain' ? [['responsive', 'Боль уменьшается после нитрата'], ['persistent', 'Боль сохраняется'], ['nitrate', 'Противопоказания к нитрату']] : selectedCase === 'syncope' ? [['brief', 'Кратковременный обморок'], ['prolonged', 'Стойкая гипотония']] : selectedCase === 'anaphylaxis' ? [['refractory', 'Сохраняются нарушения ABC после первой дозы']] : []).map(([value, label]) => <option key={value} value={`${selectedCase}:${value}`}>{label}</option>)}</select></label></details>
-      <div className="picker-bottom"><p>Сроки ухудшения — игровые. Оцениваются приоритеты и выбор предметов; каждое вмешательство выполняется одним нажатием. Клавиша H — вызов помощи.</p><button className="primary-button" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}>Начать эпизод <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
+      <div className="setup-row"><label>Режим<select value={mode} onChange={e => setMode(e.target.value as typeof mode)}><option value="training">Обучение · подсказки</option><option value="exam">Экзамен · без подсказок</option></select></label>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
+      <div className="picker-bottom"><p>Оцениваются приоритеты и выбор предметов; каждое вмешательство выполняется одним нажатием. Клавиша H — вызов помощи.</p><button className="primary-button" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}>Начать эпизод <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
       <a className="asset-credits" href={`${import.meta.env.BASE_URL}models/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">Авторство и лицензии 3D-моделей ↗</a>
     </section>}
     {attempt && !editorOpen && <>

@@ -63,7 +63,7 @@ const FIRST_PERSON_EYE_HEIGHT = 3.4
 const ACTION_HIGHLIGHT_COLOR = HINT_COLOR
 // Stable options prevent Fiber from recreating the camera on every timer tick.
 // Saved view changes are applied imperatively by SceneEditorControls.
-const INITIAL_CAMERA = { position: [7.2, 6.8, 8.5] as [number, number, number], fov: 36 }
+const INITIAL_CAMERA = { position: [5.4, 6.4, 3.8] as [number, number, number], fov: 36 }
 
 async function isGlbAvailable(url: string) {
   const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
@@ -169,9 +169,10 @@ function FirstPersonNavigation({
       keys.clear()
       dragging.current = false
       sprinting.current = false
-      camera.position.set(7.2, 6.8, 8.5)
+      const view = useSceneEditor.getState().settings.camera
+      camera.position.fromArray(view.position)
       camera.rotation.order = 'XYZ'
-      camera.lookAt(0, 1.2, 0)
+      camera.lookAt(...view.target)
       onPointerLockChange(false)
     }
   }, [gl, onPointerLockChange, onPointerLockError])
@@ -706,7 +707,7 @@ function Room({
     ) : (
       <OrbitControls
         makeDefault
-        target={[0, 1.2, 0]}
+        target={[.15, 1.3, -2.1]}
         minDistance={0.5}
         maxDistance={40}
         minPolarAngle={Math.PI / 4}
@@ -716,7 +717,7 @@ function Room({
         maxAzimuthAngle={Math.PI / 2.5}
       />
     )}
-    <SceneEditorControls firstPerson={firstPerson} />
+    <SceneEditorControls firstPerson={firstPerson} simulationActive={!!patientState} />
     </>
   )
 }

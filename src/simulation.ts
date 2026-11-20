@@ -219,7 +219,7 @@ export function tickAttempt(previous: Attempt, deltaSec: number): Attempt {
       if (before < 60) log(a, 'Пациентка слабеет и отвечает с задержкой.', 'patient')
     }
   }
-  if (a.doctorCalledAt === null && now > 30) error(a, 'call-doctor', 'critical', 'Врач не вызван в первые 30 игровых секунд. Это учебный срок оценки своевременности.')
+  if (a.doctorCalledAt === null && now > 30) error(a, 'call-doctor', 'critical', 'Врач не вызван в первые 30 секунд. Это учебный срок оценки своевременности.')
   return a
 }
 const drugs: ActionId[] = ['nitro', 'aspirin', 'captopril', 'adrenaline']
@@ -233,18 +233,18 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
   if (action === 'call-doctor' || action === 'call-team') {
     if (action === 'call-doctor' && a.doctorCalledAt === null) {
       a.doctorCalledAt = now; p.doctorCalled = true
-      if (now > 30) error(a, action, 'critical', 'Врач не вызван в первые 30 игровых секунд. Это учебный срок оценки своевременности.')
+      if (now > 30) error(a, action, 'critical', 'Врач не вызван в первые 30 секунд. Это учебный срок оценки своевременности.')
       if (a.completed.some(id => !['inspect', 'airway', 'check-injury', 'check-breathing'].includes(id))) error(a, action, 'major', 'Вызов помощи задержан после первичной оценки ABC и безопасности.')
     }
     if (action === 'call-team' && a.teamCalledAt === null) {
       a.teamCalledAt = now
       if (a.doctorCalledAt === null) {
         a.doctorCalledAt = now; p.doctorCalled = true
-        if (now > 30) error(a, 'call-doctor', 'critical', 'Врач не вызван в первые 30 игровых секунд. Это учебный срок оценки своевременности.')
+        if (now > 30) error(a, 'call-doctor', 'critical', 'Врач не вызван в первые 30 секунд. Это учебный срок оценки своевременности.')
         complete(a, 'call-doctor')
       }
     }
-    complete(a, action); a.feedback = action === 'call-doctor' ? 'Вызов принят. Врач прибудет через 90 игровых секунд. Продолжайте помощь.' : 'Вызов принят. Бригада прибудет через 45 игровых секунд.'
+    complete(a, action); a.feedback = action === 'call-doctor' ? 'Вызов принят. Врач прибудет через 90 секунд. Продолжайте помощь.' : 'Вызов принят. Бригада прибудет через 45 секунд.'
     log(a, a.feedback, 'action'); return a
   }
   if (a.phase === 'arrest') {
@@ -348,7 +348,7 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
     case 'crystalloids': a.feedback = 'По экстренному протоколу начата инфузия кристаллоида: взрослому первоначально 500–1000 мл с повторной оценкой АД, дыхания и признаков перегрузки. Венозный доступ сохранён.'; break
     case 'adrenaline': a.adrenalineGivenAt = now; a.feedback = 'Адреналин 0,5 мг (0,5 мл раствора 1 мг/мл) в/м в наружную поверхность средней трети бедра по взрослому экстренному протоколу. При сохраняющихся ABC-нарушениях повтор через 5 минут; абсолютные противопоказания при анафилаксии отсутствуют.'; break
     case 'repeat-adrenaline': a.adrenalineRepeatDue = false; a.feedback = 'Повторная в/м доза по экстренному протоколу выполнена. При рефрактерном шоке дальнейшее лечение ведёт реанимационная бригада.'; break
-    case 'observe-anaphylaxis': a.feedback = 'Передайте бригаде время и дозы адреналина, инфузию и динамику ABC. Организовано дальнейшее наблюдение из-за риска двухфазной реакции; его длительность определяет врач по риску, игровая стабилизация не означает выписку.'; break
+    case 'observe-anaphylaxis': a.feedback = 'Передайте бригаде время и дозы адреналина, инфузию и динамику ABC. Организовано дальнейшее наблюдение из-за риска двухфазной реакции; его длительность определяет врач по риску, стабилизация в симуляции не означает выписку.'; break
     case 'orthostatic': a.feedback = 'По решению врача, после восстановления, организована проба лёжа и стоя под контролем персонала. Это дополнительная оценка, не действие во время обморока.'; break
     case 'ecg': a.ecgAt = now; a.feedback = 'ЭКГ зарегистрирована, передайте врачу для интерпретации. При подозрении на ОКС целевой срок — первые 10 минут от первого контакта.'; break
     case 'repeat-measure': case 'measure': {

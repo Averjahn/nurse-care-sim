@@ -54,12 +54,20 @@ export function EditorPulse({ id, children }: { id: string; children: ReactNode 
 }
 
 type OrbitControl = { target: Vector3; update: () => void }
-export function SceneEditorControls({ firstPerson }: { firstPerson: boolean }) {
-  const { camera, controls } = useThree()
+export function SceneEditorControls({ firstPerson, simulationActive = false }: { firstPerson: boolean; simulationActive?: boolean }) {
+  const { camera, controls, size } = useThree()
   const saved = useSceneEditor(s => s.settings.camera)
   const open = useSceneEditor(s => s.open)
   const selected = useSceneEditor(s => s.selected)
   const target = useSceneEditor(s => s.targets[selected])
+  useLayoutEffect(() => {
+    if (!(camera instanceof PerspectiveCamera)) return
+    if (simulationActive && !open && !firstPerson && size.width > 900) {
+      // Keep the working area centered in the space left of the patient panel.
+      camera.setViewOffset(size.width, size.height, Math.min(340, size.width * .25) / 2, 0, size.width, size.height)
+    } else camera.clearViewOffset()
+    return () => camera.clearViewOffset()
+  }, [camera, size.width, size.height, simulationActive, open, firstPerson])
   useLayoutEffect(() => {
     if (firstPerson) return
     camera.position.fromArray(saved.position)
@@ -68,6 +76,12 @@ export function SceneEditorControls({ firstPerson }: { firstPerson: boolean }) {
     orbit?.target?.fromArray(saved.target)
     orbit?.update()
   }, [saved, camera, controls, firstPerson])
+  useLayoutEffect(() => {
+    if (firstPerson || !(camera instanceof PerspectiveCamera)) return
+    const aspect = size.width / size.height
+    const fov = Math.min(75, 2 * Math.atan(Math.tan(saved.fov * Math.PI / 360) * Math.max(1, 1 / aspect)) * 180 / Math.PI)
+    camera.setFocalLength(camera.getFilmHeight() / (2 * Math.tan(fov * Math.PI / 360)))
+  }, [camera, saved.fov, size.width, size.height, firstPerson])
   useEffect(() => {
     const captureView = () => ({ ...useSceneEditor.getState().settings.camera, position: camera.position.toArray() as Vec3, target: (controls as unknown as OrbitControl | null)?.target?.toArray() as Vec3 ?? [0, 1.2, 0] })
     useSceneEditor.setState({ captureView })

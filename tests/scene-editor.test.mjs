@@ -13,7 +13,7 @@ test('scene configuration round-trips and protects patient pulse scale', () => {
   assert.deepEqual(parsed.objects.patient.position, input.objects.patient.position)
   assert.equal(parsed.objects.patient.scale, 1.2)
   parsed.camera.position[0] = 3
-  assert.equal(DEFAULT_SCENE_SETTINGS.camera.position[0], 7.2, 'Defaults must remain immutable')
+  assert.equal(DEFAULT_SCENE_SETTINGS.camera.position[0], 5.4, 'Defaults must remain immutable')
 })
 
 test('case layouts persist independently with undo and reset', () => {
@@ -41,9 +41,25 @@ test('invalid or unsupported scene imports fail atomically', () => {
   for (const patch of [
     { version: 3 }, { objects: { bed: { scale: -1 } } }, { objects: { bed: { position: [0, NaN, 0] } } },
     { hintColor: 'yellow' }, { camera: { ...DEFAULT_SCENE_SETTINGS.camera, fov: 0 } },
-    { camera: { ...DEFAULT_SCENE_SETTINGS.camera, position: [0, 1.2, 0] } },
+    { camera: { ...DEFAULT_SCENE_SETTINGS.camera, position: [...DEFAULT_SCENE_SETTINGS.camera.target] } },
     { objects: JSON.parse('{"__proto__":{"scale":2}}') },
   ]) assert.throws(() => parseSceneSettings({ ...structuredClone(DEFAULT_SCENE_SETTINGS), ...patch }))
+})
+
+test('old default camera is upgraded without overwriting a custom camera or object layout', () => {
+  const previous = globalThis.localStorage
+  const saved = structuredClone(DEFAULT_SCENE_SETTINGS)
+  saved.camera = { position: [7.2, 6.8, 8.5], target: [0, 1.2, 0], fov: 36, eyeHeight: 2.1 }
+  saved.objects.thermometer = { position: [2, 1, -3] }
+  globalThis.localStorage = { getItem: () => JSON.stringify(saved) }
+  try {
+    const upgraded = readSceneSettings()
+    assert.deepEqual(upgraded.camera.position, DEFAULT_SCENE_SETTINGS.camera.position)
+    assert.equal(upgraded.camera.eyeHeight, 2.1)
+    assert.deepEqual(upgraded.objects, saved.objects)
+    saved.camera.position = [4, 3, 5]
+    assert.deepEqual(readSceneSettings().camera, saved.camera)
+  } finally { globalThis.localStorage = previous }
 })
 
 test('editor supports undo, redo, reset and durable configuration without saving runtime objects', () => {

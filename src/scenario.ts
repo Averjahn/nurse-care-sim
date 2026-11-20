@@ -105,7 +105,7 @@ export const sourceReferences = [
   { organization: 'RCUK · 2025', title: 'Анафилаксия и особые обстоятельства', summary: 'Адреналин внутримышечно — первая линия; антигистаминный не заменяет его.', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/special-circumstances-guidelines' },
   { organization: 'NICE · CG95', title: 'Боль в груди: оценка и диагностика', summary: 'Ответ на нитроглицерин не используется для постановки диагноза. Нужны обследование и ЭКГ.', url: 'https://www.nice.org.uk/guidance/cg95/chapter/recommendations' },
   { organization: 'RCUK · 2025', title: 'Базовая реанимация взрослых', summary: 'Ранний вызов, компрессии 100–120/мин, АНД; 30:2 при навыке искусственного дыхания.', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-basic-life-support-guidelines' },
-  { organization: 'Учебный план', title: 'Методические материалы А и Б', summary: 'Библиографические данные не приложены. Сроки ухудшения — игровые; лекарственные действия требуют проверки преподавателем.', url: '' },
+  { organization: 'Учебный план', title: 'Методические материалы А и Б', summary: 'Библиографические данные не приложены. Сроки ухудшения в симуляции условны; лекарственные действия требуют проверки преподавателем.', url: '' },
   { organization: 'GRADD CO · CC BY 3.0', title: 'GRADD Hospital Room', summary: 'Модель палаты: GRADD CO, Poly Pizza, лицензия CC BY 3.0.', url: 'https://poly.pizza/m/9sUalfQ76kn' },
 ]
 

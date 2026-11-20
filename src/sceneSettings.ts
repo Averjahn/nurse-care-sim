@@ -10,7 +10,7 @@ export interface SceneSettings {
 export const SCENE_SETTINGS_KEY = 'careflow-scene-editor-v1'
 export const DEFAULT_SCENE_SETTINGS: SceneSettings = {
   version: 1, objects: {}, hintColor: '#ffbf00',
-  camera: { position: [7.2, 6.8, 8.5], target: [0, 1.2, 0], fov: 36, eyeHeight: 3.4 },
+  camera: { position: [5.4, 6.4, 3.8], target: [.15, 1.3, -2.1], fov: 36, eyeHeight: 3.4 },
 }
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const finite = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
@@ -53,7 +53,13 @@ export function readSceneSettings(): SceneSettings {
   try {
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem(SCENE_SETTINGS_KEY)
-      if (saved) return parseSceneSettings(JSON.parse(saved))
+      if (saved) {
+        const settings = parseSceneSettings(JSON.parse(saved))
+        if (JSON.stringify(settings.camera.position) === '[7.2,6.8,8.5]' && JSON.stringify(settings.camera.target) === '[0,1.2,0]' && settings.camera.fov === 36) {
+          settings.camera = { ...structuredClone(DEFAULT_SCENE_SETTINGS.camera), eyeHeight: settings.camera.eyeHeight }
+        }
+        return settings
+      }
     }
   } catch { /* Invalid/old storage must not prevent opening the simulator. */ }
   const defaults = structuredClone(DEFAULT_SCENE_SETTINGS)

@@ -7,7 +7,7 @@ export function actionMenu(a: Attempt | null, object: ObjectId | null) {
     if (action.target.object !== object || (a && !actionInCase(action.id, a.episode))) return false
     if (action.id === 'repeat-measure' && a?.stableAt === null) return false
     if (action.id === 'measure' && a?.stableAt !== null) return false
-    if (a?.mode === 'training') {
+    if (a) {
       if (action.id === 'record' && (a.stableAt === null || !a.repeatMeasurement)) return false
       if (action.id === 'handoff' && ((!a.doctorArrived && !a.teamArrived) || required.some(id => id !== 'handoff' && !a.completed.includes(id)))) return false
     }

@@ -135,7 +135,7 @@ function App() {
     const previous = previousMenu.current
     const pending = !!attempt && !!selectedObject && !actionMenuComplete(attempt, selectedObject)
     previousMenu.current = { object: selectedObject, attempt: attempt?.id, pending }
-    if (attempt?.mode === 'training' && selectedObject && previous.object === selectedObject && previous.attempt === attempt.id && previous.pending && !pending) setSelectedObject(null)
+    if (attempt && selectedObject && previous.object === selectedObject && previous.attempt === attempt.id && previous.pending && !pending) setSelectedObject(null)
   }, [attempt, selectedObject])
   const handlePointerLockChange = useCallback((locked: boolean) => setPointerLocked(locked), [])
   const handlePointerLockError = useCallback(() => setNavigationHint('Захват мыши недоступен: осматривайтесь перетаскиванием с зажатой ЛКМ.'), [])
@@ -181,16 +181,6 @@ function App() {
     return () => window.clearInterval(interval)
   }, [tick])
   useEffect(() => {
-    const handle = (event: KeyboardEvent) => {
-      if (useSceneEditor.getState().open) return
-      const active = document.activeElement
-      if (active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'))) return
-      if (event.code === 'KeyH' && !event.repeat) { event.preventDefault(); act(useSimulationStore.getState().attempt?.phase === 'arrest' ? 'call-team' : 'call-doctor') }
-    }
-    window.addEventListener('keydown', handle)
-    return () => window.removeEventListener('keydown', handle)
-  }, [act])
-  useEffect(() => {
     let matched = 0, timeout = 0
     const pressed = new Set<string>()
     const handle = (event: KeyboardEvent) => {
@@ -229,7 +219,7 @@ function App() {
     if (actionById(id).target.object === 'bed-controls') setSelectedObject(null)
     const after = useSimulationStore.getState().attempt
     const progressed = after && previous && (after.completed.length > previous.completed.length || after.events.slice(previous.events.length).some(event => event.kind === 'action'))
-    if (progressed && after.mode === 'training' && selectedObject && actionMenuComplete(after, selectedObject)) setSelectedObject(null)
+    if (progressed && selectedObject && actionMenuComplete(after, selectedObject)) setSelectedObject(null)
     if (after && after.events.length > (previous?.events.length ?? 0) && after.events.at(-1)?.kind === 'action' && ['nitro', 'aspirin', 'adrenaline', 'captopril', 'oxygen', 'blanket', 'stop-infusion'].includes(id)) setHeldItem(actionById(id).title)
   }
   const active = Boolean(attempt && ['active', 'arrest'].includes(attempt.phase))
@@ -257,7 +247,7 @@ function App() {
       <div className="picker-intro"><span className="eyebrow">ПРАКТИКА ПРИНЯТИЯ РЕШЕНИЙ</span><h1>Увидеть. Позвать.<br/>Помочь вовремя.</h1></div>
       <div className="case-grid">{emergencyCases.map((c, index) => <button key={c.id} className={`case-card ${selectedCase === c.id ? 'selected' : ''}`} onClick={() => setSelectedCase(c.id)} aria-pressed={selectedCase === c.id}><span className="case-number">0{index + 1}</span><strong>{c.title}</strong><span>{c.description}</span></button>)}</div>
       <div className="setup-row"><label>Режим<select value={mode} onChange={e => setMode(e.target.value as typeof mode)}><option value="training">Обучение · подсказки</option><option value="exam">Экзамен · без подсказок</option></select></label>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
-      <div className="picker-bottom"><p>Оцениваются приоритеты и выбор предметов; каждое вмешательство выполняется одним нажатием. Клавиша H — вызов помощи.</p><button className="primary-button" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}>Начать эпизод <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
+      <div className="picker-bottom"><p>Оцениваются приоритеты и выбор предметов; каждое вмешательство выполняется одним нажатием.</p><button className="primary-button" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}>Начать эпизод <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
       <a className="asset-credits" href={`${import.meta.env.BASE_URL}models/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">Авторство и лицензии 3D-моделей ↗</a>
     </section>}
     {attempt && !editorOpen && <>

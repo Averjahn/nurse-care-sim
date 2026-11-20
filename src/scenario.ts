@@ -13,7 +13,7 @@ export const stageTitles = ['Распознать', 'Вызвать помощь
 export const objectLabels: Record<ObjectId, string> = {
   glucometer: 'Глюкометр', 'aed-device': 'Автоматический дефибриллятор (АНД)', 'bag-mask': 'Мешок Амбу с маской',
   tonometer: 'Тонометр',
-  patient: 'Пациентка', 'bed-controls': 'Функциональная кровать', 'call-bell': 'Пост и вызов помощи', monitor: 'Прикроватный монитор', chart: 'Температурный лист', medications: 'Аптечка', oxygen: 'Кислород', blanket: 'Одеяло', heater: 'Грелка', sink: 'Умывальник', injection: 'Инъекция и система', cpr: 'Реанимация', linen: 'Чистое бельё', equipment: 'Инструменты', thermometer: 'Термометр', pulseox: 'Пульсоксиметр', 'ecg-device': 'Электрокардиограф', 'shock-kit': 'Противошоковая укладка', 'iv-stand': 'Инфузионная стойка', 'ice-pack': 'Пузырь со льдом', analgesics: 'Обезболивающее', 'enema-kit': 'Клизма', 'food-water': 'Вода и еда',
+  patient: 'Пациентка', 'bed-controls': 'Функциональная кровать', 'call-bell': 'Вызов помощи', monitor: 'Прикроватный монитор', chart: 'Температурный лист', medications: 'Аптечка', oxygen: 'Кислород', blanket: 'Одеяло', heater: 'Грелка', sink: 'Умывальник', injection: 'Инъекция и система', cpr: 'Реанимация', linen: 'Чистое бельё', equipment: 'Инструменты', thermometer: 'Термометр', pulseox: 'Пульсоксиметр', 'ecg-device': 'Электрокардиограф', 'shock-kit': 'Противошоковая укладка', 'iv-stand': 'Инфузионная стойка', 'ice-pack': 'Пузырь со льдом', analgesics: 'Обезболивающее', 'enema-kit': 'Клизма', 'food-water': 'Вода и еда',
 }
 export interface Step {
   id: ActionId
@@ -46,7 +46,7 @@ export const actions: Step[] = [
   ['aed-follow', 'Выполнить команды АНД и возобновить компрессии', 3, 'aed-device'],
   ['abdomen-history', 'Уточнить анамнез боли и гинекологический анамнез', 1, 'patient'],
   ['measure', 'Измерить давление и пульс', 1, 'tonometer'], ['repeat-measure', 'Повторно измерить давление и пульс', 5, 'tonometer'], ['baseline', 'Прочитать исходные показатели', 1, 'chart'],
-  ['call-doctor', 'Срочно вызвать врача · H', 2, 'call-bell'], ['call-team', 'Вызвать реанимационную бригаду', 2, 'call-bell'], ['ecg', 'Снять ЭКГ и подготовить запись врачу', 4, 'ecg-device'],
+  ['call-doctor', 'Срочно вызвать врача', 2, 'call-bell'], ['call-team', 'Вызвать реанимационную бригаду', 2, 'call-bell'], ['ecg', 'Снять ЭКГ и подготовить запись врачу', 4, 'ecg-device'],
   ['supine', 'Уложить на спину', 3, 'bed-controls'], ['legs-up', 'Поднять ноги, убрать подушку', 3, 'bed-controls'], ['semi-sitting', 'Помочь принять полусидячее положение', 3, 'bed-controls'], ['sitting', 'Посадить на край кровати', 3, 'bed-controls'],
   ['clothing', 'Освободить от стесняющей одежды', 3, 'patient'], ['airway', 'Проверить проходимость дыхательных путей', 3, 'patient'], ['oxygen', 'Подготовить и подать кислород по протоколу', 3, 'oxygen'],
   ['blanket', 'Укрыть одеялом', 3, 'blanket'], ['heat', 'Приложить грелку', 3, 'heater'], ['linen', 'Сменить влажное бельё', 3, 'linen'], ['prepare-iv', 'Подготовить инфузию по назначению, сохранить доступ', 4, 'iv-stand'], ['calm', 'Успокоить, сохранять контакт', 3, 'patient'],

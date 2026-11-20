@@ -84,6 +84,9 @@ try {
     assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName('+JSON.stringify('interaction-'+id)+').userData.hinted'),false,'Click acknowledges hint')
   }
   const action = name => click('.context-actions button', name)
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'h', code: 'KeyH' })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'h', code: 'KeyH' })
+  assert.equal(await evaluate('window.__simulation.getState().attempt.doctorCalledAt'), null, 'Call shortcut is disabled')
   await select('call-bell');await action('Срочно вызвать врача')
   await wait('document.querySelector(".action-panel") === null','training closes call menu without waiting for future handoff')
   assert.notEqual(await evaluate('window.__simulation.getState().attempt.doctorCalledAt'),null)

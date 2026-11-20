@@ -38,7 +38,16 @@ test('repeat measurement remains available when stabilization happens during the
   a = performAction(a, 'record')
   assert.ok(actionMenu(a, 'call-bell').some(s => s.id === 'handoff'))
 })
-test('exam mode keeps its existing actions visible', () => {
-  const a = createAttempt('collapse', { mode: 'exam' })
-  assert.ok(actionMenu(a, 'call-bell').some(s => s.id === 'handoff'))
-})
+for (const mode of ['training', 'exam']) {
+  test(`${mode}: doctor call closes the menu when only future handoff remains`, () => {
+    const a = performAction(createAttempt('collapse', { mode }), 'call-doctor')
+    assert.ok(!actionMenu(a, 'call-bell').some(s => s.id === 'handoff'))
+    assert.equal(actionMenuComplete(a, 'call-bell'), true)
+  })
+  test(`${mode}: ACS call stays open until the team is also called`, () => {
+    let a = performAction(createAttempt('chest-pain', { mode }), 'call-doctor')
+    assert.equal(actionMenuComplete(a, 'call-bell'), false)
+    a = performAction(a, 'call-team')
+    assert.equal(actionMenuComplete(a, 'call-bell'), true)
+  })
+}

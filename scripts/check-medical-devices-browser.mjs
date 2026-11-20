@@ -141,6 +141,7 @@ try {
   await select('oxygen'); await action('Подключить кислород к мешку')
   await select('bag-mask'); await action('Выполнить 2 вдоха')
   await select('aed-device'); await action('Подготовить АНД'); await action('Наклеить электроды'); await action('Выполнить команды')
+  assert.ok(await evaluate(`!!window.__threeStore.getState().scene.getObjectByName('restored-wall-defibrillator') && !window.__threeStore.getState().scene.getObjectByName('editable-bedside-cabinet')`))
   await select('bed-controls'); await action('Подготовить кровать для СЛР')
   assert.ok(await evaluate(`window.__simulation.getState().attempt.completed.includes('aed-follow') && window.__simulation.getState().attempt.completed.includes('ventilate')`))
   await shot('10-cpr-aed-bag-mask')

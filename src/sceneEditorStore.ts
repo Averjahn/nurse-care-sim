@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useMemo } from 'react'
 import type { Object3D } from 'three'
 import { useSimulationStore } from './store.ts'
+import { migrateRemovedCabinet } from './wardStorage.ts'
 import { DEFAULT_SCENE_SETTINGS, SCENE_SETTINGS_KEY, parseSceneSettings, readSceneSettings, type ObjectSettings, type SceneSettings, type Vec3 } from './sceneSettings.ts'
 
 export interface EditorTarget { id: string; label: string; object: Object3D; position: Vec3; localPosition: Vec3; localScale: Vec3; hintScale: number }
@@ -67,7 +68,7 @@ export const useSceneEditor = create<EditorState>((set, get) => {
       const s = get(), settings = s.redoStack.at(-1); if (!settings) return
       lastEdit.key = ''; set({ settings, redoStack: s.redoStack.slice(0, -1), undoStack: [...s.undoStack, s.settings], storageError: persist(settings) })
     },
-    importSettings: input => commit(parseSceneSettings(input)),
+    importSettings: input => commit(migrateRemovedCabinet(parseSceneSettings(input))),
   }
 })
 
@@ -78,7 +79,7 @@ export function useObjectSettings(id: string) {
   return useMemo(() => specific ? { ...common, ...specific } : common, [common, specific])
 }
 
-export const supportIds = ['bed', 'bedside-cabinet', 'shelf', 'shelf-left']
+export const supportIds = ['bed', 'shelf', 'shelf-left']
 export function editorObjectAllowed(id: string) {
   return !id.startsWith('imported-') && !id.startsWith('wall-') && !['window', 'doctor', 'blanket-on-patient'].includes(id)
 }

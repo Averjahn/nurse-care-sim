@@ -63,7 +63,6 @@ export function MedicalModel({ id }: { id: ObjectId }) {
   const attempt = useSimulationStore(s => s.attempt)
   const done = (action: string) => !!attempt?.completed.some(id => id === action)
   if (id === 'glucometer') return <group><Box size={[.12, .08, .19]} color="#7099ad"/><DeviceReadout value={attempt?.glucoseMeasurement?.value.toFixed(1) ?? '--'} caption="ммоль/л" width={.09} depth={.12} y={.041}/><Box size={[.035, .008, .09]} at={[0, -.02, .12]}/></group>
-  if (id === 'aed-device') return <group><Box size={[.4, .22, .3]} color="#d6b354"/><Box size={[.19, .012, .14]} at={[0, .115, 0]} color={done('aed-follow') ? '#62ada7' : '#284d59'}/><Box size={[.16, .04, .035]} at={[0, .13, -.13]} color="#617f85"/></group>
   if (id === 'bag-mask') return <group><mesh scale={[1.5, .85, .85]}><sphereGeometry args={[.11, 16, 12]}/><meshStandardMaterial color="#83bec2" transparent opacity={.8}/></mesh><mesh position={[.22, 0, 0]} scale={[1, .65, 1]}><sphereGeometry args={[.09, 12, 10]}/><meshStandardMaterial color="#b2dde0" transparent opacity={.65}/></mesh></group>
   if (id === 'tonometer') return <group>
     <Box size={[.26, .16, .18]}/>
@@ -82,7 +81,7 @@ export function MedicalModel({ id }: { id: ObjectId }) {
   if (id === 'ice-pack') return <group><mesh scale={[1, .4, 1]}><sphereGeometry args={[.18, 16, 10]}/><meshStandardMaterial color="#7caac5"/></mesh><Rod at={[0, .09, 0]} height={.045} radius={.05} color="#d9e7e5"/></group>
   if (id === 'analgesics') return <group><Box size={[.22, .065, .13]} color="#e9ebe1"/>{[-.06, .02, .07].map(x => <mesh key={x} position={[x, .036, 0]}><sphereGeometry args={[.017, 8, 6]}/><meshStandardMaterial color="#d2b5a7"/></mesh>)}</group>
   if (id === 'enema-kit') return <group><mesh scale={[1, 1.3, .7]}><sphereGeometry args={[.09, 12, 8]}/><meshStandardMaterial color="#aa85aa"/></mesh><Rod at={[0, .17, 0]} height={.17} radius={.016}/></group>
-  if (id === 'food-water') return <group><Rod at={[0, .07, 0]} height={.14} radius={.055} color="#bfdce3"/><Box size={[.19, .045, .14]} at={[.18, .025, 0]} color="#dcbd91"/></group>
+  if (id === 'food-water') return <group><Box size={[.4, .025, .26]} at={[.1, -.0125, 0]} color="#edf0e5"/><Rod at={[0, .07, 0]} height={.14} radius={.055} color="#bfdce3"/><Box size={[.19, .045, .14]} at={[.18, .025, 0]} color="#dcbd91"/></group>
   return null
 }
 /** Accessories are attached to rig bones so they follow the posture without raycasting the skin. */

@@ -69,6 +69,7 @@ try {
     await sleep(100)
   }
   await initialize()
+  assert.ok(await evaluate(`!window.__editor.getState().targets['bedside-cabinet'] && !!window.__three.getState().scene.getObjectByName('restored-wall-defibrillator')`), 'Cabinet removed and original wall defibrillator restored')
   await click('button','Начать эпизод');await shortcut()
   await input('[aria-label="Расстановка кейса"]','')
   await wait(`!Object.keys(window.__editor.getState().targets).some(id=>id.startsWith('imported-')||id.startsWith('wall-')||id==='window')`,'editor excludes decoration')
@@ -134,7 +135,7 @@ try {
   await input('[aria-label="Расстановка кейса"]','')
   await evaluate('window.__editor.getState().setPreview(false)')
   await sleep(200)
-  const collisions = await evaluate(`(()=>{const s=window.__editor.getState(),T=window.__T,ids=['glucometer','tonometer','aed-device','bag-mask','ecg-device','shock-kit','medications','equipment','injection','analgesics','chart','blanket','linen','heater','ice-pack','enema-kit','food-water','thermometer','pulseox'];const boxes=ids.map(id=>[id,new T.Box3().setFromObject(s.targets[id].object)]);const errors=[];for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){if(boxes[i][1].clone().expandByScalar(.02).intersectsBox(boxes[j][1]))errors.push([boxes[i][0],boxes[j][0]])}return errors})()`)
+  const collisions = await evaluate(`(()=>{const s=window.__editor.getState(),T=window.__T,ids=['monitor','glucometer','tonometer','aed-device','bag-mask','ecg-device','shock-kit','medications','equipment','injection','analgesics','chart','blanket','linen','heater','ice-pack','enema-kit','food-water','thermometer','pulseox'];const boxes=ids.map(id=>[id,new T.Box3().setFromObject(s.targets[id].object)]);const errors=[];for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){if(boxes[i][1].clone().expandByScalar(.02).intersectsBox(boxes[j][1]))errors.push([boxes[i][0],boxes[j][0]])}return errors})()`)
   assert.deepEqual(collisions, [], 'Catalog objects have at least 2 cm clearance')
   await shot('05-separated-shelf-catalog')
   await input('[aria-label="Расстановка кейса"]','abdomen')

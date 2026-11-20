@@ -1,3 +1,4 @@
+import { migrateRemovedCabinet } from './wardStorage.ts'
 export type Vec3 = [number, number, number]
 export interface ObjectSettings { position?: Vec3; scale?: number; hintColor?: string; hintScale?: number }
 export interface SceneSettings {
@@ -58,7 +59,7 @@ export function readSceneSettings(): SceneSettings {
         if (JSON.stringify(settings.camera.position) === '[7.2,6.8,8.5]' && JSON.stringify(settings.camera.target) === '[0,1.2,0]' && settings.camera.fov === 36) {
           settings.camera = { ...structuredClone(DEFAULT_SCENE_SETTINGS.camera), eyeHeight: settings.camera.eyeHeight }
         }
-        return settings
+        return migrateRemovedCabinet(settings)
       }
     }
   } catch { /* Invalid/old storage must not prevent opening the simulator. */ }

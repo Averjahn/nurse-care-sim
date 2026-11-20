@@ -520,6 +520,7 @@ function HospitalRoomAsset({
   const { scene } = useGLTF(modelUrl)
   const editorOpen = useSceneEditor(s => s.open)
   const editingBlanket = useSceneEditor(s => s.selected === 'blanket-on-patient')
+  const cprSupport = useSimulationStore(s => !!s.attempt?.completed.includes('firm-surface'))
   const patientScale = patientTransform.scale * PATIENT_REAL_WORLD_SCALE
   const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
   const { model, scale, offset, floorBounds, wallBounds, importedObjects } = useMemo(() => {
@@ -590,6 +591,7 @@ function HospitalRoomAsset({
 
     <BedMotionProvider>
     <EditableTarget id="bed" label="Кровать" position={BED_ORIGIN} hintScale={1}>
+      {cprSupport && <mesh name="cpr-bed-support" position={[0, -.37, .04]}><boxGeometry args={[1.9, .03, 3.5]}/><meshStandardMaterial color="#829a9c"/></mesh>}
       {bedSource && <EditorPulse id="bed"><RestoredBed source={bedSource.object} sourceMatrix={bedSourceMatrix}/></EditorPulse>}
     <EditableTarget id="patient" label="Пациентка" hintScale={1}
       position={[
@@ -823,35 +825,39 @@ interface SceneObjectPlacement {
   color: string
 }
 const sceneObjects: SceneObjectPlacement[] = [
+  { id: 'glucometer', position: [3.5, 1.84, -3.62], color: '#7099ad' },
+  { id: 'aed-device', position: [3.95, 1.11, -3.62], color: '#d6b354' },
+  { id: 'bag-mask', position: [-3.8, 1.894, -3.62], color: '#83bec2' },
+  { id: 'tonometer', position: [1.43, 1.604, -2.65], color: '#e4eee9' },
   { id: 'thermometer', position: [1.55, 1.546, -2.15], color: '#e4eee9' },
   { id: 'pulseox', position: [1.83, 1.586, -2.2], color: '#6e9db0' },
   { id: 'ecg-device', position: [2.05, 1.875, -3.68], color: '#6c9ca3' },
   { id: 'shock-kit', position: [3.05, 1.87, -3.62], color: '#bb5d55' },
   { id: 'iv-stand', position: [-1.95, .124, -3.1], color: '#86a5a8' },
   { id: 'ice-pack', position: [-2.8, 1.872, -3.62], color: '#79a9c5' },
-  { id: 'analgesics', position: [3.25, 1.0325, -3.62], color: '#e8ece4' },
+  { id: 'analgesics', position: [2.95, 1.0325, -3.62], color: '#e8ece4' },
   { id: 'enema-kit', position: [-3.65, 1.117, -3.62], color: '#a582a2' },
-  { id: 'food-water', position: [1.7, 1.524, -2.65], color: '#bddbe1' },
+  { id: 'food-water', position: [1.8, 1.524, -2.65], color: '#bddbe1' },
   // Controls and emergency bell mount to the authored bed's right rail.
   { id: 'bed-controls', position: [.88, 1.23, -1.12], rotation: [0, Math.PI / 2, 0], hitbox: [0.29, 0.2, 0.14], color: '#71939b' },
   { id: 'call-bell', position: [.88, 1.54, -2.5], rotation: [0, Math.PI / 2, 0], hitbox: [0.22, 0.32, 0.14], color: '#c66058' },
   { id: 'monitor', position: [.65, 2.55, -3.86], color: '#4b918d' },
-  { id: 'chart', position: [3.85, SHELF_LOWER + 0.0175, SHELF_Z], rotation: [-Math.PI / 2, 0, 0], hitbox: [0.32, 0.44, 0.06], color: '#809c83' },
+  { id: 'chart', position: [3.35, SHELF_LOWER + 0.0175, SHELF_Z], rotation: [-Math.PI / 2, 0, 0], hitbox: [0.32, 0.44, 0.06], color: '#809c83' },
   { id: 'medications', position: [3.85, SHELF_TOP + 0.0675, SHELF_Z], color: '#b57e60' },
   { id: 'oxygen', position: [1.35, .654, -1.2], hitbox: [0.28, 0.7, 0.28], color: '#5d9bb0' },
   { id: 'blanket', position: [-2.25, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#789e98' },
   { id: 'heater', position: [-2.1, SHELF_TOP + 0.024, SHELF_Z], rotation: [Math.PI / 2, 0, 0], hitbox: [0.24, 0.44, 0.09], color: '#c98c74' },
   { id: 'sink', position: [-3.75, 1.15, 1.7], rotation: [0, Math.PI / 2, 0], color: '#a3beb9' },
-  { id: 'injection', position: [2.75, SHELF_LOWER + 0.06, SHELF_Z], rotation: [0, 0, Math.PI / 2], hitbox: [0.15, 0.5, 0.15], color: '#719dac' },
+  { id: 'injection', position: [2.35, SHELF_LOWER + 0.06, SHELF_Z], rotation: [0, 0, Math.PI / 2], hitbox: [0.15, 0.5, 0.15], color: '#719dac' },
   { id: 'linen', position: [-3.08, SHELF_LOWER + 0.0225, SHELF_Z], hitbox: [0.4, 0.15, 0.32], color: '#96b1ac' },
-  { id: 'equipment', position: [2.05, SHELF_LOWER + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
+  { id: 'equipment', position: [1.85, SHELF_LOWER + 0.0175, SHELF_Z], hitbox: [0.39, 0.12, 0.26], color: '#8c9eaf' },
 ]
-function BedsideInteractions({ targetAction, onAction, patientState }: Pick<RoomSceneProps, 'targetAction' | 'onAction' | 'patientState'>) {
+function BedsideInteractions({ targetAction, onAction }: Pick<RoomSceneProps, 'targetAction' | 'onAction' | 'patientState'>) {
   const motion = useBedMotion()!
   const bell = useRef<THREE.Group>(null)
   const placements = useMemo(() => sceneObjects.filter(o => ['call-bell', 'bed-controls'].includes(o.id)).map(o => ({ ...o, position: o.position.map((v, i) => v - BED_ORIGIN[i]) as [number, number, number] })), [])
   useFrame(() => { bell.current?.rotation.set(motion.current.angles.head, 0, 0) })
-  return <>{placements.map(object => object.id === 'call-bell' ? <group ref={bell} key={object.id}><EmergencyObject object={object} highlighted={targetAction === object.id} onAction={onAction}/></group> : patientState?.breathing !== false ? <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/> : null)}</>
+  return <>{placements.map(object => object.id === 'call-bell' ? <group ref={bell} key={object.id}><EmergencyObject object={object} highlighted={targetAction === object.id} onAction={onAction}/></group> : <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}</>
 }
 /** Pulse the actual mesh materials, never a proxy box. All materials here
  * belong to the mounted scene instance (patient materials are cloned on load). */
@@ -891,7 +897,7 @@ function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, 
   const layout = useSceneEditor(s => s.layout)
   const catalog = useSceneEditor(s => s.catalog)
   return <>
-    {sceneObjects.filter(o => !['call-bell', 'bed-controls'].includes(o.id) && (editorOpen ? catalog || objectInCase(o.id, layout ? layout as Parameters<typeof objectInCase>[1] : undefined) : objectInCase(o.id, episode) && patientState?.breathing !== false)).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => !['call-bell', 'bed-controls'].includes(o.id) && (editorOpen ? catalog || objectInCase(o.id, layout ? layout as Parameters<typeof objectInCase>[1] : undefined) : patientState?.breathing === false ? ['aed-device', 'bag-mask', 'oxygen'].includes(o.id) : objectInCase(o.id, episode))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }
@@ -935,7 +941,7 @@ function CenterInteraction({ onAction, onFocusObject }: Pick<RoomSceneProps, 'on
 }
 
 function ObjectVisual({ id, color }: { id: ObjectId; color: string }) {
-  if (['monitor', 'thermometer', 'pulseox', 'ecg-device', 'shock-kit', 'iv-stand', 'ice-pack', 'analgesics', 'enema-kit', 'food-water', 'medications', 'oxygen'].includes(id)) return <MedicalModel id={id}/>
+  if (['glucometer', 'aed-device', 'bag-mask', 'tonometer', 'monitor', 'thermometer', 'pulseox', 'ecg-device', 'shock-kit', 'iv-stand', 'ice-pack', 'analgesics', 'enema-kit', 'food-water', 'medications', 'oxygen'].includes(id)) return <MedicalModel id={id}/>
   if (id === 'chart') return <group>
     <mesh><boxGeometry args={[0.3, 0.42, 0.035]}/><meshStandardMaterial color="#6e8b89"/></mesh>
     <mesh position={[0, -0.01, 0.02]}><boxGeometry args={[0.26, 0.35, 0.008]}/><meshStandardMaterial color="#faf9ee"/></mesh>

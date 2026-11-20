@@ -23,7 +23,6 @@ test('window and hole track saved size and wall position without floating off th
 test('permanently closed window is absent from actions and every scenario requirement', () => {
   assert.ok(!actions.some(a => a.id === 'air' || a.target.object === 'window'))
   for (const scenario of emergencyCases) {
-    assert.ok(!scenario.required.includes('air'))
     const required = requiredActions(createAttempt(scenario.id))
     assert.ok(!required.includes('air'))
     assert.ok(required.every(id => actions.some(a => a.id === id)))

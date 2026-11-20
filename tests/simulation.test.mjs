@@ -6,13 +6,11 @@ const act = (a, ...ids) => ids.reduce((state, id) => performAction(state, id), a
 const called = (id, options = {}) => act(createAttempt(id, options), 'call-doctor')
 function completeCase(id, options = {}) {
   let a = called(id, options)
-  // Deliberately execute medical actions freely, not by a linear checklist.
-  a = act(a, 'talk', 'inspect', 'measure', 'baseline')
-  for (const action of requiredActions(a).filter(id => !['record', 'handoff', 'repeat-measure', 'call-doctor', 'observe-recovery', 'pain-response'].includes(id))) a = act(a, action)
-  if (id === 'syncope') a = act(tickAttempt(a, 25), 'observe-recovery')
-  if (id === 'chest-pain') {
-    a = act(a, 'pain-response')
-    for (const action of requiredActions(a).filter(id => !a.completed.includes(id) && !['record', 'handoff', 'repeat-measure'].includes(id))) a = act(a, action)
+  for (let i = 0; i < 80; i++) {
+    const next = requiredActions(a).find(id => !a.completed.includes(id))
+    if (!next || next === 'repeat-measure') break
+    if (next === 'observe-recovery') a = tickAttempt(a, 25)
+    a = act(a, next)
   }
   assert.notEqual(a.stableAt, null, `${id}: not stable; missing ${requiredActions(a).filter(id => !a.completed.includes(id))}; feedback ${a.feedback}`)
   a = tickAttempt(a, 91)
@@ -32,7 +30,7 @@ test('unsafe abdomen interventions are rejected without changing patient', () =>
 })
 test('nitro requires a fresh measurement before each dose', () => {
   let a = called('chest-pain', { nitroMinSbp: 100, variant: 'responsive' })
-  a = act(a, 'protocol', 'nitro')
+  a = act(a, 'drug-history', 'protocol', 'nitro')
   assert.equal(a.patient.nitroDoses, 0)
   a = act(a, 'measure', 'nitro')
   assert.equal(a.patient.nitroDoses, 1)
@@ -40,13 +38,13 @@ test('nitro requires a fresh measurement before each dose', () => {
   assert.equal(a.patient.nitroDoses, 1); assert.match(a.feedback, /заново измерить/)
 })
 test('nitro threshold is instructor-supplied and enforced', () => {
-  let a = act(called('chest-pain'), 'measure', 'protocol', 'nitro')
+  let a = act(called('chest-pain'), 'measure', 'drug-history', 'protocol', 'nitro')
   assert.equal(a.patient.nitroDoses, 0); assert.match(a.feedback, /не задан порог/)
-  a = act(called('chest-pain', { nitroMinSbp: 140 }), 'measure', 'protocol', 'nitro')
+  a = act(called('chest-pain', { nitroMinSbp: 140 }), 'measure', 'drug-history', 'protocol', 'nitro')
   assert.equal(a.patient.nitroDoses, 0); assert.equal(a.errors.at(-1).severity, 'critical')
 })
 test('nitro cannot exceed three doses or repeat before interval', () => {
-  let a = act(called('chest-pain', { nitroMinSbp: 80, variant: 'responsive' }), 'measure', 'protocol', 'nitro')
+  let a = act(called('chest-pain', { nitroMinSbp: 80, variant: 'responsive' }), 'measure', 'drug-history', 'protocol', 'nitro')
   a = tickAttempt(a, 1); a = act(a, 'measure', 'nitro')
   assert.equal(a.patient.nitroDoses, 1); assert.match(a.feedback, /5 минут/)
   // Boundary state isolates dose-limit guards from the deterioration clock.
@@ -55,20 +53,20 @@ test('nitro cannot exceed three doses or repeat before interval', () => {
   assert.equal(after.patient.nitroDoses, 3); assert.equal(after.errors.at(-1).severity, 'critical')
 })
 test('nitro response does not establish diagnosis', () => {
-  let a = act(called('chest-pain', { nitroMinSbp: 100, variant: 'responsive' }), 'measure', 'protocol', 'nitro', 'pain-response')
+  let a = act(called('chest-pain', { nitroMinSbp: 100, variant: 'responsive' }), 'measure', 'drug-history', 'protocol', 'nitro', 'pain-response')
   assert.equal(a.patient.chestPainRelieved, true); assert.match(a.feedback, /не устанавливает диагноз/)
-  a = act(called('chest-pain', { nitroMinSbp: 100, variant: 'persistent' }), 'measure', 'protocol', 'nitro', 'pain-response')
+  a = act(called('chest-pain', { nitroMinSbp: 100, variant: 'persistent' }), 'measure', 'drug-history', 'protocol', 'nitro', 'pain-response')
   assert.equal(a.patient.chestPainRelieved, false); assert.ok(requiredActions(a).includes('call-team'))
 })
 test('hypertension requires baseline and can branch to chest pain', () => {
   let a = act(called('hypertension'), 'measure', 'protocol', 'captopril')
   assert.ok(!a.completed.includes('captopril'))
-  a = act(a, 'baseline', 'captopril'); assert.ok(a.completed.includes('captopril'))
+  a = act(a, 'baseline', 'neuro', 'captopril'); assert.ok(a.completed.includes('captopril'))
   const branch = tickAttempt(called('hypertension'), 75)
   assert.equal(branch.episode, 'chest-pain'); assert.equal(branch.patient.complaint, 'chestPain')
 })
 test('prolonged syncope branches to collapse after positioning', () => {
-  let a = act(called('syncope', { variant: 'prolonged' }), 'check-injury', 'transfer', 'legs-up', 'airway')
+  let a = act(called('syncope', { variant: 'prolonged' }), 'check-injury', 'position-on-site', 'airway')
   a = tickAttempt(a, 30)
   assert.equal(a.episode, 'collapse'); assert.ok(requiredActions(a).includes('prepare-iv'))
 })
@@ -95,12 +93,11 @@ test('no fabricated chart entries before repeat measurement', () => {
   const a = act(called('abdomen'), 'record')
   assert.ok(!a.completed.includes('record')); assert.match(a.feedback, /повторное измерение/)
 })
-test('CPR uses real-time rhythm, blocks wrong location, and hands off after support arrives', () => {
+test('CPR uses one action per series, AED workflow and bag-mask ventilation before handoff', () => {
   let a = tickAttempt(createAttempt('collapse'), 180)
-  a = act(a, 'check-breathing', 'call-team', 'chest-location', 'aed')
-  for (let i = 0; i < 30; i++) a = performAction(a, 'compression', i * 550)
-  assert.equal(a.cycleCompressions, 30); assert.equal(a.goodCompressions, 29)
-  a = act(a, 'ventilate')
+  a = act(a, 'check-breathing', 'call-team', 'firm-surface', 'chest-location', 'aed', 'compression')
+  assert.equal(a.cycleCompressions, 30)
+  a = act(a, 'aed-pads', 'aed-follow', 'open-airway', 'cpr-oxygen', 'ventilate')
   a = tickAttempt(a, 45)
   assert.equal(a.phase, 'active'); assert.equal(a.patient.breathing, true)
   a = act(a, 'measure', 'record', 'handoff'); assert.equal(a.phase, 'finished')
@@ -157,9 +154,9 @@ test('store reset isolates attempts, and exam mode cannot be paused', async () =
 
 test('training hints prioritize calling help and repeat measurement before charting', () => {
   assert.equal(nextObject(createAttempt('collapse')), 'call-bell')
-  let a = act(called('abdomen'), 'talk', 'inspect', 'measure', 'temperature', 'saturation', 'knees-up', 'avoid-intervention')
+  let a = act(called('abdomen'), 'inspect', 'airway', 'knees-up', 'measure', 'temperature', 'saturation', 'talk', 'abdomen-history', 'request-analgesia', 'avoid-intervention')
   assert.notEqual(a.stableAt, null)
-  assert.equal(nextObject(a), 'monitor')
+  assert.equal(nextObject(a), 'tonometer')
   a = act(a, 'measure')
   assert.equal(nextObject(a), 'chart')
 })

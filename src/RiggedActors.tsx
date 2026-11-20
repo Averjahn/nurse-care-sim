@@ -11,7 +11,8 @@ import type { PatientState } from './simulation'
 import { EditableTarget, EditorPulse } from './SceneEditor3D'
 import { PatientAccessories } from './MedicalModels'
 import { useBedMotion } from './bedMotionContext'
-import { alignPatientBones, prepareBedContact, restPatientArms, seatPatientOnMattress } from './patientBedContact'
+import { alignPatientBones, prepareBedContact, restPatientArms, seatPatientOnFloor, seatPatientOnMattress } from './patientBedContact'
+import { targetBedAngles } from './bedKinematics'
 import { installPatientPicking } from './patientPicking'
 
 const ROOT = import.meta.env.BASE_URL
@@ -135,6 +136,9 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
         restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles)
         contactApplied.current = true
       }
+    } else if (patient.location === 'sink' && patient.position !== 'sitting') {
+      alignPatientBones(prepared.contact, targetBedAngles(patient.position))
+      seatPatientOnFloor(prepared.object, prepared.contact)
     } else prepared.object.position.setY(0)
   })
   return <><primitive object={prepared.object} dispose={null}/><PatientAccessories object={prepared.object}/></>

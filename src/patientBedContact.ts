@@ -28,6 +28,20 @@ export function alignPatientBones(calibration: ReturnType<typeof prepareBedConta
   if (spine) spine.position.set(0, .12 - .12 * Math.sin(a.head), .12 * (Math.cos(a.head) - 1))
   for (const side of ['Left', 'Right']) { rotate(`${side}UpLeg`, -a.thigh + patientLegTilt(a.head)); rotate(`${side}Leg`, a.thigh - a.shin) }
 }
+
+export function seatPatientOnFloor(object: Object3D, calibration: ReturnType<typeof prepareBedContact>) {
+  if (!calibration.mesh) return
+  object.position.y = 0
+  object.parent?.updateWorldMatrix(true, false); object.updateMatrixWorld(true)
+  let lowest = Infinity
+  for (const index of calibration.samples) {
+    calibration.mesh.getVertexPosition(index, calibration.point)
+    calibration.mesh.localToWorld(calibration.point)
+    lowest = Math.min(lowest, calibration.point.y)
+  }
+  if (Number.isFinite(lowest)) object.position.y = (.14 - lowest) / (object.parent?.getWorldScale(calibration.scale).y ?? 1)
+  object.updateMatrixWorld(true)
+}
 /** A few hundred cached back-surface points; never scan/raycast the full animated mesh per frame. */
 export function seatPatientOnMattress(object: Object3D, calibration: ReturnType<typeof prepareBedContact>, frame: Object3D, angles: BedAngles, pillow: boolean) {
   if (!calibration.mesh) return

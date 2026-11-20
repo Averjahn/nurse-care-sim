@@ -134,7 +134,7 @@ try {
   await input('[aria-label="Расстановка кейса"]','')
   await evaluate('window.__editor.getState().setPreview(false)')
   await sleep(200)
-  const collisions = await evaluate(`(()=>{const s=window.__editor.getState(),T=window.__T,ids=['ecg-device','shock-kit','medications','equipment','injection','analgesics','chart','blanket','linen','heater','ice-pack','enema-kit','food-water','thermometer','pulseox'];const boxes=ids.map(id=>[id,new T.Box3().setFromObject(s.targets[id].object)]);const errors=[];for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){if(boxes[i][1].clone().expandByScalar(.02).intersectsBox(boxes[j][1]))errors.push([boxes[i][0],boxes[j][0]])}return errors})()`)
+  const collisions = await evaluate(`(()=>{const s=window.__editor.getState(),T=window.__T,ids=['glucometer','tonometer','aed-device','bag-mask','ecg-device','shock-kit','medications','equipment','injection','analgesics','chart','blanket','linen','heater','ice-pack','enema-kit','food-water','thermometer','pulseox'];const boxes=ids.map(id=>[id,new T.Box3().setFromObject(s.targets[id].object)]);const errors=[];for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){if(boxes[i][1].clone().expandByScalar(.02).intersectsBox(boxes[j][1]))errors.push([boxes[i][0],boxes[j][0]])}return errors})()`)
   assert.deepEqual(collisions, [], 'Catalog objects have at least 2 cm clearance')
   await shot('05-separated-shelf-catalog')
   await input('[aria-label="Расстановка кейса"]','abdomen')

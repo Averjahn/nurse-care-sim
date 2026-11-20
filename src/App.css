@@ -63,12 +63,10 @@ p { line-height: 1.55; }
 .context-actions > button.suggested { border-color: #93b779; background: #edf4e3; }
 .context-actions > button.done { color: #85a07c; }
 .action-bullet { width: 5px; height: 5px; background: #a7b597; border-radius: 50%; flex-shrink: 0; }
-.context-note, .chart-data, .measurement-game { font-size: 11px; color: #7b8668; line-height: 1.55; }
+.context-note, .chart-data { font-size: 11px; color: #7b8668; line-height: 1.55; }
 .chart-data { background: #f0f4e7; padding: 12px; margin-bottom: 12px; border-radius: 8px; }
 .chart-data p:last-child { margin-bottom: 0; }
 .chart-data svg { vertical-align: middle; }
-.measurement-game { display: grid; gap: 14px; }
-.measurement-game p { margin-bottom: 0; }
 progress { width: 100%; height: 7px; accent-color: #598e69; }
 .cpr-stats { display: flex; gap: 10px; flex-wrap: wrap; padding-top: 14px; font-size: 10px; color: #ad6859; }
 .navigation-help { position: absolute; z-index: 3; bottom: 20px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 40px); padding: 8px 15px; border-radius: 9px; font-size: 10px; color: #567957; text-align: center; }

@@ -5,6 +5,20 @@ import { createAttempt, performAction, tickAttempt, requiredActions } from '../s
 import { patientPose } from '../src/patientAnimation.ts'
 import { pulseWave } from '../src/pulseWave.ts'
 const act = (a, ...ids) => ids.reduce((s, id) => performAction(s, id), a)
+test('one cuff action captures BP and pulse without connecting continuous monitoring', () => {
+  let a = act(createAttempt('abdomen'), 'call-doctor')
+  const before = a.patient.secondsSinceOnset
+  a = act(a, 'measure')
+  assert.equal(a.measurement.sbp, a.patient.sbp)
+  assert.equal(a.measurement.pulse, a.patient.pulse)
+  assert.equal(a.patient.secondsSinceOnset, before)
+  assert.ok(!a.completed.includes('connect-monitor'))
+  assert.equal(actions.find(a => a.id === 'measure').target.object, 'tonometer')
+  assert.equal(actions.find(a => a.id === 'repeat-measure').target.object, 'tonometer')
+  assert.ok(!actions.some(a => a.target.object === 'monitor' && ['measure', 'repeat-measure'].includes(a.id)))
+  a = act(a, 'connect-monitor')
+  assert.ok(a.completed.includes('connect-monitor'))
+})
 test('every required action has an interactive object visible in its episode', () => {
   for (const c of emergencyCases) for (const id of requiredActions(createAttempt(c.id))) {
     const action = actions.find(a => a.id === id)
@@ -38,13 +52,14 @@ test('oxygen for ACS follows oxygen saturation and cannot replace pulse oximetry
   const shock = act(createAttempt('anaphylaxis'), 'call-doctor', 'oxygen')
   assert.ok(shock.completed.includes('oxygen'), 'Emergency oxygen must not wait for a saturation reading in anaphylactic shock')
 })
-test('safe sink transfer precedes bed positioning and brief syncope restores BP', () => {
+test('syncope is positioned on site before measurements or transfer', () => {
   let a = act(createAttempt('syncope', { variant: 'brief' }), 'call-doctor', 'transfer', 'legs-up')
   assert.equal(a.patient.location, 'sink')
-  a = act(a, 'check-injury', 'transfer', 'legs-up', 'airway')
-  assert.equal(a.patient.location, 'bed')
+  a = act(a, 'check-injury', 'position-on-site', 'airway')
+  assert.equal(a.patient.location, 'sink'); assert.equal(a.patient.position, 'legsUp')
   a = tickAttempt(a, 25)
   assert.equal(a.patient.consciousness, 'ok'); assert.equal(a.patient.sbp, 112)
+  a = act(a, 'transfer'); assert.equal(a.patient.location, 'bed')
   assert.ok(!act(a, 'sitting').completed.includes('sitting'))
 })
 test('venous access is preserved and adrenaline is available without waiting for the doctor', () => {
@@ -60,7 +75,7 @@ test('abdomen uses flexed knees and distinguishes prescribed pain relief from se
   assert.ok(!a.completed.includes('self-analgesia')); assert.ok(!a.completed.includes('food')); assert.ok(!a.completed.includes('ice'))
 })
 test('hypertension uses Fowler and rejects stacking or repeating drugs', () => {
-  const a = act(createAttempt('hypertension'), 'call-doctor', 'supine', 'semi-sitting', 'multiple-drugs', 'measure', 'baseline', 'protocol', 'captopril', 'captopril')
+  const a = act(createAttempt('hypertension'), 'call-doctor', 'supine', 'semi-sitting', 'multiple-drugs', 'measure', 'baseline', 'neuro', 'protocol', 'captopril', 'captopril')
   assert.equal(a.patient.position, 'semiSitting')
   assert.ok(!a.completed.includes('supine')); assert.ok(!a.completed.includes('multiple-drugs'))
   assert.match(a.feedback, /Повторная доза/)

@@ -13,7 +13,7 @@ function Box({ size, at = [0, 0, 0], color = '#e3edeb' }: { size: [number, numbe
 function Rod({ at, height, radius = .018, color = '#a6b8b7' }: { at: [number, number, number]; height: number; radius?: number; color?: string }) {
   return <mesh position={at}><cylinderGeometry args={[radius, radius, height, 10]}/><meshStandardMaterial color={color} metalness={.35}/></mesh>
 }
-function DeviceReadout({ value, width, depth, y }: { value: string; width: number; depth: number; y: number }) {
+function DeviceReadout({ value, width, depth, y, caption }: { value: string; width: number; depth: number; y: number; caption?: string }) {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128
     return new CanvasTexture(canvas)
@@ -23,10 +23,11 @@ function DeviceReadout({ value, width, depth, y }: { value: string; width: numbe
     ctx.fillStyle = '#102e34'; ctx.fillRect(0, 0, 256, 128)
     ctx.fillStyle = '#a5f7d4'; ctx.font = 'bold 48px monospace'; ctx.textAlign = 'center'
     ctx.fillText(value, 128, 83)
+    if (caption) { ctx.font = '20px sans-serif'; ctx.fillText(caption, 128, 27) }
     // Three.js owns this mutable GPU resource.
     // eslint-disable-next-line react/immutability
     texture.needsUpdate = true
-  }, [texture, value])
+  }, [texture, value, caption])
   useEffect(() => () => texture.dispose(), [texture])
   return <mesh position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[width, depth]}/><meshBasicMaterial map={texture} toneMapped={false}/></mesh>
 }
@@ -61,6 +62,15 @@ export function MonitorScreen() {
 export function MedicalModel({ id }: { id: ObjectId }) {
   const attempt = useSimulationStore(s => s.attempt)
   const done = (action: string) => !!attempt?.completed.some(id => id === action)
+  if (id === 'glucometer') return <group><Box size={[.12, .08, .19]} color="#7099ad"/><DeviceReadout value={attempt?.glucoseMeasurement?.value.toFixed(1) ?? '--'} caption="ммоль/л" width={.09} depth={.12} y={.041}/><Box size={[.035, .008, .09]} at={[0, -.02, .12]}/></group>
+  if (id === 'aed-device') return <group><Box size={[.4, .22, .3]} color="#d6b354"/><Box size={[.19, .012, .14]} at={[0, .115, 0]} color={done('aed-follow') ? '#62ada7' : '#284d59'}/><Box size={[.16, .04, .035]} at={[0, .13, -.13]} color="#617f85"/></group>
+  if (id === 'bag-mask') return <group><mesh scale={[1.5, .85, .85]}><sphereGeometry args={[.11, 16, 12]}/><meshStandardMaterial color="#83bec2" transparent opacity={.8}/></mesh><mesh position={[.22, 0, 0]} scale={[1, .65, 1]}><sphereGeometry args={[.09, 12, 10]}/><meshStandardMaterial color="#b2dde0" transparent opacity={.65}/></mesh></group>
+  if (id === 'tonometer') return <group>
+    <Box size={[.26, .16, .18]}/>
+    <DeviceReadout value={attempt?.measurement ? `${attempt.measurement.sbp}  ${attempt.measurement.pulse}` : '--'} caption="САД     ПУЛЬС" width={.21} depth={.11} y={.081}/>
+    <mesh position={[0, -.04, .14]} rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[.065, .018, 8, 24]}/><meshStandardMaterial color="#657f91"/></mesh>
+    <Box size={[.08, .015, .025]} at={[.06, .086, -.055]} color="#62ada7"/>
+  </group>
   if (id === 'medications') return <group><Box size={[.42, .035, .3]} at={[0, -.05, 0]} color="#729999"/>{[-.12, .02, .14].map((x, i) => <group key={x}><Rod at={[x, .025, 0]} height={.11} radius={.034} color={['#bd9373', '#eef0d9', '#d0dfdb'][i]}/><Rod at={[x, .09, 0]} height={.025} radius={.037} color="#eff0e5"/><Box size={[.046, .03, .006]} at={[x, .03, .034]} color={["#cc8a72", "#76a9b8", "#bca76b"][i]}/></group>)}</group>
   if (id === 'oxygen') return <group><Rod at={[0, -.18, 0]} height={.56} radius={.095} color="#d3e5df"/><Rod at={[0, .15, 0]} height={.1} radius={.035}/><Rod at={[.14, .05, 0]} height={.16} radius={.046} color="#b4d9e0"/><Box size={[.14, .025, .025]} at={[.07, .14, 0]} color="#719b98"/><mesh position={[.09, .19, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.045, .045, .02, 12]}/><meshStandardMaterial color={done('oxygen') ? '#64c798' : '#edf0e5'}/></mesh><mesh position={[-.13, -.37, .1]} scale={[.7, .45, 1]}><sphereGeometry args={[.1, 12, 8]}/><meshStandardMaterial color="#aed9dc" transparent opacity={.75}/></mesh></group>
   if (id === 'monitor') return <group scale={[1.7, 1.7, 1]}><Box size={[.54, .34, .09]}/><MonitorScreen/><Box size={[.24, .2, .08]} at={[0, 0, -.08]} color="#617f85"/><Box size={[.07, .025, .012]} at={[.19, -.125, .05]} color={done('connect-monitor') ? '#3edb8b' : '#8a9f9e'}/></group>
@@ -90,9 +100,10 @@ export function PatientAccessories({ object }: { object: import('three').Object3
   }), [object])
   // Portal geometry into the bones; React removes and disposes it with the actor.
   return <>
-    {mounts.head && <AccessoryPortal target={mounts.head} visible={!!attempt?.completed.includes('oxygen')}><mesh position={[0, .035, .105]} scale={[.7, 1, .5]}><sphereGeometry args={[.073, 12, 10]}/><meshStandardMaterial color="#b1dfe0" transparent opacity={.8}/></mesh><Rod at={[.065, -.04, .07]} height={.22} radius={.006} color="#abd8d6"/></AccessoryPortal>}
+    {mounts.head && <AccessoryPortal target={mounts.head} visible={!!attempt?.completed.some(id => ['oxygen', 'ventilate'].includes(id))}><mesh position={[0, .035, .105]} scale={[.7, 1, .5]}><sphereGeometry args={[.073, 12, 10]}/><meshStandardMaterial color="#b1dfe0" transparent opacity={.8}/></mesh><Rod at={[.065, -.04, .07]} height={.22} radius={.006} color="#abd8d6"/></AccessoryPortal>}
     {mounts.chest && <AccessoryPortal target={mounts.chest} visible={!!attempt?.completed.includes('attach-electrodes')}>{[-.09, .09].flatMap(x => [0, .08].map(y => <mesh key={`${x}-${y}`} position={[x, y, .09]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.022, .022, .008, 10]}/><meshStandardMaterial color="#f1e8ca"/></mesh>))}</AccessoryPortal>}
-    {mounts.arm && <AccessoryPortal target={mounts.arm} visible={attempt?.caseId === 'anaphylaxis' && attempt.patient.injectionRoute === 'intravenous'}><Box size={[.06, .09, .008]} at={[0, .1, .06]} color="#f2e9ce"/><Rod at={[0, .1, .07]} height={.05} radius={.008} color="#6ca8b2"/></AccessoryPortal>}
+    {mounts.chest && <AccessoryPortal target={mounts.chest} visible={!!attempt?.completed.includes('aed-pads')}><Box size={[.075, .1, .008]} at={[-.09, .12, .11]} color="#f5e9bc"/><Box size={[.075, .1, .008]} at={[.14, -.07, .1]} color="#f5e9bc"/></AccessoryPortal>}
+    {mounts.arm && <AccessoryPortal target={mounts.arm} visible={!!attempt && ((attempt.caseId === 'anaphylaxis' && attempt.patient.injectionRoute === 'intravenous') || attempt.completed.some(id => ['prepare-iv', 'crystalloids'].includes(id)))}><Box size={[.06, .09, .008]} at={[0, .1, .06]} color="#f2e9ce"/><Rod at={[0, .1, .07]} height={.05} radius={.008} color="#6ca8b2"/></AccessoryPortal>}
     {mounts.hand && <AccessoryPortal target={mounts.hand} visible={!!attempt?.completed.includes('saturation')}><Box size={[.038, .04, .06]} at={[0, .06, .02]} color="#5e9dab"/></AccessoryPortal>}
     {mounts.hips && <AccessoryPortal target={mounts.hips} visible={!!attempt?.completed.includes('ice')}><Box size={[.22, .18, .035]} at={[0, .13, .12]} color="#8cb8cd"/></AccessoryPortal>}
   </>

@@ -1,9 +1,9 @@
-import { actionInCase } from './scenario'
+import { actionMenu, actionMenuComplete } from './actionMenu'
 import PulseTrace from './PulseTrace'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Activity, X, ArrowLeft, Check } from 'lucide-react'
 import RoomScene, { type BlanketTransform, type PatientTransform } from './RoomScene'
-import { actions, actionById, emergencyCases, getCase, objectLabels, stageTitles, type ActionId, type CaseId, type ObjectId } from './scenario'
+import { actionById, emergencyCases, getCase, objectLabels, stageTitles, type ActionId, type CaseId, type ObjectId } from './scenario'
 import { consciousnessLabels, elapsed, nextObject, patientCue, positionLabels, requiredActions, routeLabels, skinLabels, stageScores, type Attempt } from './simulation'
 import { useSimulationStore } from './store'
 import { placeActionPopover, type ScreenPoint } from './actionPopover'
@@ -132,6 +132,13 @@ function App() {
   const firstPersonCameraHeight = useSceneEditor(s => s.settings.camera.eyeHeight)
   const [heldItem, setHeldItem] = useState('')
   const lastArchived = useRef('')
+  const previousMenu = useRef<{ object: ObjectId | null; attempt: string | undefined; pending: boolean }>({ object: null, attempt: undefined, pending: false })
+  useEffect(() => {
+    const previous = previousMenu.current
+    const pending = !!attempt && !!selectedObject && !actionMenuComplete(attempt, selectedObject)
+    previousMenu.current = { object: selectedObject, attempt: attempt?.id, pending }
+    if (attempt?.mode === 'training' && selectedObject && previous.object === selectedObject && previous.attempt === attempt.id && previous.pending && !pending) setSelectedObject(null)
+  }, [attempt, selectedObject])
   const handlePointerLockChange = useCallback((locked: boolean) => setPointerLocked(locked), [])
   const handlePointerLockError = useCallback(() => setNavigationHint('Захват мыши недоступен: осматривайтесь перетаскиванием с зажатой ЛКМ.'), [])
   const unlock = () => { if (document.pointerLockElement) document.exitPointerLock() }
@@ -226,6 +233,8 @@ function App() {
     act(id)
     if (actionById(id).target.object === 'bed-controls') setSelectedObject(null)
     const after = useSimulationStore.getState().attempt
+    const progressed = after && previous && (after.completed.length > previous.completed.length || after.events.slice(previous.events.length).some(event => event.kind === 'action'))
+    if (progressed && after.mode === 'training' && selectedObject && actionMenuComplete(after, selectedObject)) setSelectedObject(null)
     if (after && after.events.length > (previous?.events.length ?? 0) && after.events.at(-1)?.kind === 'action' && ['nitro', 'aspirin', 'adrenaline', 'captopril', 'oxygen', 'blanket', 'stop-infusion'].includes(id)) setHeldItem(actionById(id).title)
   }
   const active = Boolean(attempt && ['active', 'arrest'].includes(attempt.phase))
@@ -233,15 +242,7 @@ function App() {
   const hint = active && attempt?.mode === 'training' ? nextObject(attempt) : null
   const hintKey = `${attempt?.id}:${required.find(id => !attempt?.completed.includes(id)) ?? ''}`
   const scores = attempt ? stageScores(attempt) : []
-  const contextActions = actions.filter(action => (!attempt || actionInCase(action.id, attempt.episode)) && action.target.object === selectedObject && (action.id !== 'repeat-measure' || attempt?.stableAt !== null) && (action.id !== 'measure' || attempt?.stableAt === null) && (
-    attempt?.phase === 'arrest' ? ['cpr', 'call-bell', 'aed-device', 'bag-mask', 'oxygen', 'bed-controls'].includes(action.target.object) && ['check-breathing', 'call-team', 'cpr-oxygen', 'firm-surface', 'chest-location', 'wrong-location', 'compression', 'open-airway', 'ventilate', 'aed', 'aed-pads', 'aed-follow'].includes(action.id) : action.target.object !== 'cpr' && !['cpr-oxygen', 'firm-surface', 'aed-pads', 'aed-follow', 'ventilate'].includes(action.id)
-  )).sort((a, b) => {
-    const rank = (id: ActionId) => {
-      const i = required.indexOf(id)
-      return i < 0 ? 2000 : attempt?.completed.includes(id) ? 1000 + i : i
-    }
-    return rank(a.id) - rank(b.id)
-  })
+  const contextActions = actionMenu(attempt, selectedObject)
   const showThreshold = selectedCase === 'chest-pain' || selectedCase === 'hypertension'
   return <main className={`app-shell emergency-app ${attempt?.phase === 'arrest' ? 'arrest-mode' : ''}`}>
     <section className="scene-wrap"><RoomScene

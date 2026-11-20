@@ -114,7 +114,7 @@ try {
   await evaluate(`window.__simulation.getState().start('anaphylaxis',{route:'intravenous'})`)
   await wait(`Math.abs(window.__threeStore.getState().scene.getObjectByName('Bed_Head').rotation.x)<.001`, 'new episode resets bed')
   await select('call-bell');await action('Вызвать реанимационную')
-  await select('injection');await action('Прекратить инфузию');await action('Удалить венозный катетер')
+  await select('injection');await action('Прекратить инфузию');await select('injection');await action('Удалить венозный катетер')
   assert.ok(await evaluate(`!window.__simulation.getState().attempt.completed.includes('remove-catheter')`))
   await select('medications');await action('Сверить учебное назначение')
   await select('shock-kit');await action('Ввести адреналин')

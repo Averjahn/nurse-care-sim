@@ -1,7 +1,9 @@
 import { migrateRemovedCabinet } from './wardStorage.ts'
+import { COLLAPSE_LAYOUT, DEFAULT_HINT_COLOR, SCENE_PRESET_REVISION, applyScenePreset } from './scenePreset.ts'
 export type Vec3 = [number, number, number]
 export interface ObjectSettings { position?: Vec3; scale?: number; hintColor?: string; hintScale?: number }
 export interface SceneSettings {
+  presetRevision?: number
   version: 1
   objects: Record<string, ObjectSettings>
   layouts?: Record<string, Record<string, ObjectSettings>>
@@ -10,7 +12,8 @@ export interface SceneSettings {
 }
 export const SCENE_SETTINGS_KEY = 'careflow-scene-editor-v1'
 export const DEFAULT_SCENE_SETTINGS: SceneSettings = {
-  version: 1, objects: {}, hintColor: '#ffbf00',
+  version: 1, presetRevision: SCENE_PRESET_REVISION, objects: {}, hintColor: DEFAULT_HINT_COLOR,
+  layouts: { collapse: structuredClone(COLLAPSE_LAYOUT) },
   camera: { position: [5.4, 6.4, 3.8], target: [.15, 1.3, -2.1], fov: 36, eyeHeight: 3.4 },
 }
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -20,6 +23,11 @@ const color = (v: unknown): v is string => typeof v === 'string' && /^#[\da-f]{6
 export function parseSceneSettings(input: unknown): SceneSettings {
   if (!record(input) || input.version !== 1 || !record(input.objects)) throw new Error('Нужна конфигурация сцены версии 1.')
   const result = structuredClone(DEFAULT_SCENE_SETTINGS)
+  if (input.presetRevision === undefined) delete result.presetRevision
+  else {
+    if (!finite(input.presetRevision, 0, 10000) || !Number.isInteger(input.presetRevision)) throw new Error('Некорректная версия настройки сцены.')
+    result.presetRevision = input.presetRevision
+  }
   if (input.layouts !== undefined) {
     if (!record(input.layouts)) throw new Error('Некорректные расстановки.')
     result.layouts = {}
@@ -59,7 +67,12 @@ export function readSceneSettings(): SceneSettings {
         if (JSON.stringify(settings.camera.position) === '[7.2,6.8,8.5]' && JSON.stringify(settings.camera.target) === '[0,1.2,0]' && settings.camera.fov === 36) {
           settings.camera = { ...structuredClone(DEFAULT_SCENE_SETTINGS.camera), eyeHeight: settings.camera.eyeHeight }
         }
-        return migrateRemovedCabinet(settings)
+        migrateRemovedCabinet(settings)
+        if ((settings.presetRevision ?? 0) < SCENE_PRESET_REVISION) {
+          applyScenePreset(settings)
+          try { localStorage.setItem(SCENE_SETTINGS_KEY, JSON.stringify(settings)) } catch { /* Keep the applied preset even when storage is read-only. */ }
+        }
+        return settings
       }
     }
   } catch { /* Invalid/old storage must not prevent opening the simulator. */ }

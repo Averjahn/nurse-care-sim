@@ -1,6 +1,7 @@
 import { Color, Mesh, MeshBasicMaterial, MeshStandardMaterial, type Object3D } from 'three'
+import { DEFAULT_HINT_COLOR } from './scenePreset.ts'
 
-export const HINT_COLOR = '#ffbf00'
+export const HINT_COLOR = DEFAULT_HINT_COLOR
 
 /** Install once per mounted material, then animate only a shared GPU uniform.
  * Tint after lighting so bright hospital lights cannot wash yellow into white. */

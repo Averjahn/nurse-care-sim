@@ -13,7 +13,7 @@ export const stageTitles = ['Распознать', 'Вызвать помощь
 export const objectLabels: Record<ObjectId, string> = {
   glucometer: 'Глюкометр', 'aed-device': 'Автоматический дефибриллятор (АНД)', 'bag-mask': 'Мешок Амбу с маской',
   tonometer: 'Тонометр',
-  patient: 'Пациентка', 'bed-controls': 'Функциональная кровать', 'call-bell': 'Вызов помощи', monitor: 'Прикроватный монитор', chart: 'Температурный лист', medications: 'Аптечка', oxygen: 'Кислород', blanket: 'Одеяло', heater: 'Грелка', sink: 'Умывальник', injection: 'Инъекция и система', cpr: 'Реанимация', linen: 'Чистое бельё', equipment: 'Инструменты', thermometer: 'Термометр', pulseox: 'Пульсоксиметр', 'ecg-device': 'Электрокардиограф', 'shock-kit': 'Противошоковая укладка', 'iv-stand': 'Инфузионная стойка', 'ice-pack': 'Пузырь со льдом', analgesics: 'Обезболивающее', 'enema-kit': 'Клизма', 'food-water': 'Вода и еда',
+  patient: 'Пациентка', 'bed-controls': 'Функциональная кровать', 'call-bell': 'Вызов помощи', monitor: 'Прикроватный монитор', chart: 'Температурный лист', medications: 'Аптечка', oxygen: 'Кислородный концентратор', blanket: 'Одеяло', heater: 'Грелка', sink: 'Умывальник', injection: 'Инъекция и система', cpr: 'Реанимация', linen: 'Чистое бельё', equipment: 'Инструменты', thermometer: 'Термометр', pulseox: 'Пульсоксиметр', 'ecg-device': 'Электрокардиограф', 'shock-kit': 'Противошоковая укладка', 'iv-stand': 'Инфузионная стойка', 'ice-pack': 'Пузырь со льдом', analgesics: 'Обезболивающее', 'enema-kit': 'Клизма', 'food-water': 'Вода и еда',
 }
 export interface Step {
   id: ActionId

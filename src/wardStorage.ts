@@ -21,3 +21,14 @@ export function migrateRemovedCabinet(settings: SceneSettings) {
   }
   return settings
 }
+
+/** Ground the new caster-mounted model at the former published bottle placement. */
+export function migrateOxygenConcentrator(settings: SceneSettings) {
+  for (const objects of [settings.objects, ...Object.values(settings.layouts ?? {})]) {
+    const oxygen = objects.oxygen
+    if (oxygen?.position && Math.abs(oxygen.position[1] - .938507008614826) < 1e-8) {
+      oxygen.position = [oxygen.position[0], .654, oxygen.position[2]]
+    }
+  }
+  return settings
+}

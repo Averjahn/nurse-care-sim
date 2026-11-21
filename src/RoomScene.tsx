@@ -12,6 +12,7 @@ import { splitRoomObjects } from './importedRoomObjects'
 import { selectEditorSceneObject, useObjectSettings, useSceneEditor } from './sceneEditorStore'
 import { useObjectHighlight } from './useObjectHighlight'
 import { MedicalModel } from './MedicalModels'
+import { CONCENTRATOR_BASE_OFFSET } from './OxygenConcentrator'
 import { WALL_STORAGE_POSITIONS } from './wardStorage'
 import { BedMotionProvider } from './BedMotion'
 import { useBedMotion } from './bedMotionContext'
@@ -875,13 +876,14 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
   const color = settings?.hintColor ?? defaultColor
   const maxScale = settings?.hintScale ?? 1 + growth
   useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' ? 0 : maxScale - 1, color)
-  return <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
+  const content = <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
     onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (useSceneEditor.getState().open) { selectEditorSceneObject(editorId); return }; if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
     onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}
     onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>
-    {children}
-    {hovered && !document.pointerLockElement && <Html position={[0, 0.28, 0]} center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}><span className="scene-label">{objectLabels[id]}</span></Html>}
+    {id === 'oxygen' ? <group position={[0, CONCENTRATOR_BASE_OFFSET, 0]}>{children}</group> : children}
+    {hovered && !document.pointerLockElement && <Html position={[0, id === 'oxygen' ? 1.05 : .28, 0]} center zIndexRange={[2, 1]} style={{ pointerEvents: 'none' }}><span className="scene-label">{objectLabels[id]}</span></Html>}
   </group>
+  return id === 'oxygen' ? <group position={[0, -CONCENTRATOR_BASE_OFFSET, 0]}>{content}</group> : content
 }
 function EmergencyObject({ object, highlighted, onAction, visual }: { object: SceneObjectPlacement; highlighted: boolean; onAction: RoomSceneProps['onAction']; visual?: ReactNode }) {
   const hitbox = object.hitbox ?? [0.36, 0.4, 0.25]

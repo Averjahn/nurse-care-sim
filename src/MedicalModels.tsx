@@ -6,6 +6,7 @@ import { useSimulationStore } from './store'
 import { useSceneEditor } from './sceneEditorStore'
 import { drawMonitor, pulseWave } from './pulseWave'
 import type { ObjectId } from './scenario'
+import OxygenConcentrator from './OxygenConcentrator'
 
 function Box({ size, at = [0, 0, 0], color = '#e3edeb' }: { size: [number, number, number]; at?: [number, number, number]; color?: string }) {
   return <mesh position={at}><boxGeometry args={size}/><meshStandardMaterial color={color} roughness={.65}/></mesh>
@@ -71,7 +72,7 @@ export function MedicalModel({ id }: { id: ObjectId }) {
     <Box size={[.08, .015, .025]} at={[.06, .086, -.055]} color="#62ada7"/>
   </group>
   if (id === 'medications') return <group><Box size={[.42, .035, .3]} at={[0, -.05, 0]} color="#729999"/>{[-.12, .02, .14].map((x, i) => <group key={x}><Rod at={[x, .025, 0]} height={.11} radius={.034} color={['#bd9373', '#eef0d9', '#d0dfdb'][i]}/><Rod at={[x, .09, 0]} height={.025} radius={.037} color="#eff0e5"/><Box size={[.046, .03, .006]} at={[x, .03, .034]} color={["#cc8a72", "#76a9b8", "#bca76b"][i]}/></group>)}</group>
-  if (id === 'oxygen') return <group><Rod at={[0, -.18, 0]} height={.56} radius={.095} color="#d3e5df"/><Rod at={[0, .15, 0]} height={.1} radius={.035}/><Rod at={[.14, .05, 0]} height={.16} radius={.046} color="#b4d9e0"/><Box size={[.14, .025, .025]} at={[.07, .14, 0]} color="#719b98"/><mesh position={[.09, .19, 0]} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[.045, .045, .02, 12]}/><meshStandardMaterial color={done('oxygen') ? '#64c798' : '#edf0e5'}/></mesh><mesh position={[-.13, -.37, .1]} scale={[.7, .45, 1]}><sphereGeometry args={[.1, 12, 8]}/><meshStandardMaterial color="#aed9dc" transparent opacity={.75}/></mesh></group>
+  if (id === 'oxygen') return <OxygenConcentrator running={done('oxygen') || done('cpr-oxygen')}/>
   if (id === 'monitor') return <group scale={[1.7, 1.7, 1]}><Box size={[.54, .34, .09]}/><MonitorScreen/><Box size={[.24, .2, .08]} at={[0, 0, -.08]} color="#617f85"/><Box size={[.07, .025, .012]} at={[.19, -.125, .05]} color={done('connect-monitor') ? '#3edb8b' : '#8a9f9e'}/></group>
   if (id === 'thermometer') return <group><Box size={[.29, .045, .055]}/><group position={[.025, 0, 0]}><DeviceReadout value={attempt?.temperatureMeasurement?.value.toFixed(1) ?? '--'} width={.095} depth={.035} y={.026}/></group><Box size={[.07, .023, .025]} at={[-.17, 0, 0]} color="#b5c4ca"/></group>
   if (id === 'pulseox') return <group><Box size={[.1, .07, .16]} color="#6d9db0"/><Box size={[.085, .028, .14]} at={[0, -.052, .012]}/><DeviceReadout value={done('saturation') && attempt!.patient.pulse > 0 ? `${Math.round(attempt!.patient.spo2)}%` : '--'} width={.075} depth={.09} y={.038}/></group>

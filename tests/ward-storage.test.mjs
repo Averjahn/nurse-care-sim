@@ -1,7 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { migrateRemovedCabinet, WALL_STORAGE_POSITIONS } from '../src/wardStorage.ts'
+import { migrateOxygenConcentrator, migrateRemovedCabinet, WALL_STORAGE_POSITIONS } from '../src/wardStorage.ts'
 import { DEFAULT_SCENE_SETTINGS, readSceneSettings } from '../src/sceneSettings.ts'
+
+test('concentrator caster height is corrected without changing the supplied horizontal placement', () => {
+  const settings = structuredClone(DEFAULT_SCENE_SETTINGS)
+  settings.layouts.collapse.oxygen.position = [1.2257576631881326, .938507008614826, -3.5592940517211016]
+  settings.layouts.abdomen = { oxygen: { position: [2, .8, -3] } }
+  migrateOxygenConcentrator(settings)
+  assert.deepEqual(settings.layouts.collapse.oxygen.position, [1.2257576631881326, .654, -3.5592940517211016])
+  assert.deepEqual(settings.layouts.abdomen.oxygen.position, [2, .8, -3])
+})
 
 test('saved placements on the retired cabinet move to wall storage in every case', () => {
   const settings = structuredClone(DEFAULT_SCENE_SETTINGS)

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { useMemo } from 'react'
 import type { Object3D } from 'three'
 import { useSimulationStore } from './store.ts'
-import { migrateRemovedCabinet } from './wardStorage.ts'
+import { migrateOxygenConcentrator, migrateRemovedCabinet } from './wardStorage.ts'
 import { DEFAULT_SCENE_SETTINGS, SCENE_SETTINGS_KEY, parseSceneSettings, readSceneSettings, type ObjectSettings, type SceneSettings, type Vec3 } from './sceneSettings.ts'
 
 export interface EditorTarget { id: string; label: string; object: Object3D; position: Vec3; localPosition: Vec3; localScale: Vec3; hintScale: number }
@@ -68,7 +68,7 @@ export const useSceneEditor = create<EditorState>((set, get) => {
       const s = get(), settings = s.redoStack.at(-1); if (!settings) return
       lastEdit.key = ''; set({ settings, redoStack: s.redoStack.slice(0, -1), undoStack: [...s.undoStack, s.settings], storageError: persist(settings) })
     },
-    importSettings: input => commit(migrateRemovedCabinet(parseSceneSettings(input))),
+    importSettings: input => commit(migrateOxygenConcentrator(migrateRemovedCabinet(parseSceneSettings(input)))),
   }
 })
 

@@ -1,4 +1,4 @@
-import { migrateRemovedCabinet } from './wardStorage.ts'
+import { migrateOxygenConcentrator, migrateRemovedCabinet } from './wardStorage.ts'
 import { COLLAPSE_LAYOUT, DEFAULT_HINT_COLOR, SCENE_PRESET_REVISION, applyScenePreset } from './scenePreset.ts'
 export type Vec3 = [number, number, number]
 export interface ObjectSettings { position?: Vec3; scale?: number; hintColor?: string; hintScale?: number }
@@ -72,7 +72,7 @@ export function readSceneSettings(): SceneSettings {
           applyScenePreset(settings)
           try { localStorage.setItem(SCENE_SETTINGS_KEY, JSON.stringify(settings)) } catch { /* Keep the applied preset even when storage is read-only. */ }
         }
-        return settings
+        return migrateOxygenConcentrator(settings)
       }
     }
   } catch { /* Invalid/old storage must not prevent opening the simulator. */ }

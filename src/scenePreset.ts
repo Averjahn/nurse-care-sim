@@ -4,7 +4,7 @@ export const DEFAULT_HINT_COLOR = '#FFD500'
 export const SCENE_PRESET_REVISION = 1
 export const COLLAPSE_LAYOUT: Record<string, ObjectSettings> = {
   'call-bell': { position: [0.8797297328762567, 1.2138771338025447, -2.0341672444288825] },
-  oxygen: { position: [1.2257576631881326, 0.938507008614826, -3.5592940517211016] },
+  oxygen: { position: [1.2257576631881326, 0.654, -3.5592940517211016] },
   sink: { position: [-3.75, 1.0169459520697726, -2.4904704470556362] },
   'enema-kit': { hintScale: 2 },
   'ice-pack': { hintScale: 2 },

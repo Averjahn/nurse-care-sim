@@ -71,7 +71,7 @@ try {
   assert.ok(bedSize[0] > 2 && bedSize[2] > 3.6,'Original bed dimensions preserved')
   await evaluate(`(()=>{const {camera,controls}=window.__threeStore.getState();controls.target.set(-.27,1.6,-2.1);controls.minDistance=.5;camera.position.set(4.5,4.2,3.4);controls.update();camera.updateMatrixWorld()})()`)
   const reports=[]
-  for(const [position,head,thigh] of [['supine',0,0],['semiSitting',Math.PI/4,0],['kneesUp',0,.65],['legsUp',0,Math.PI/9]]) {
+  for(const [position,head,thigh] of (process.argv.includes('--blanket-only') ? [] : [['supine',0,0],['semiSitting',Math.PI/4,0],['kneesUp',0,.65],['legsUp',0,Math.PI/9]])) {
     await evaluate(`window.__simulation.setState(s=>({attempt:{...s.attempt,patient:{...s.attempt.patient,position:${JSON.stringify(position)}}}}))`)
     await wait(`Math.abs(window.__threeStore.getState().scene.getObjectByName('Bed_Head').rotation.x-${head})<.001`,`${position}: head settled`)
     // Wait until the shared two-second motion has finished in every section.
@@ -95,7 +95,9 @@ try {
     await evaluate('window.__simulation.setState(s=>({attempt:{...s.attempt,paused:true}}))')
     const hands = await evaluate(`(()=>{const T=window.__THREE,scene=window.__threeStore.getState().scene,cloth=scene.getObjectByName('patient-blanket').children[0];scene.updateMatrixWorld(true);return ['Left','Right'].flatMap(side=>['Hand','Hand_End'].map(part=>{let bone;scene.traverse(o=>{if(o.name==='mixamorig'+side+part)bone=o});const p=bone.getWorldPosition(new T.Vector3());const ray=new T.Raycaster(p.clone().add(new T.Vector3(0,3,0)),new T.Vector3(0,-1,0));const hit=ray.intersectObject(cloth)[0];return {bone:side+part,clearance:hit?hit.distance-3:null}}))})()`)
     for (const hand of hands) assert.ok(hand.clearance !== null && hand.clearance > .02, `${position}: hand stays above fabric: ${JSON.stringify(hand)}`)
-    handReports.push({ position, hands })
+    const skin = await evaluate(`(()=>{const T=window.__THREE,scene=window.__threeStore.getState().scene,cloth=scene.getObjectByName('patient-blanket').children[0];let mesh;scene.traverse(o=>{if(!mesh&&o.isSkinnedMesh&&o.skeleton.bones.some(b=>b.name.includes('LeftHand')))mesh=o});const rest=mesh.geometry.getAttribute('position'),point=new T.Vector3();let min=Infinity,count=0;for(let i=0;i<rest.count;i++){if(Math.abs(rest.getX(i))<.65||rest.getY(i)<.92||rest.getY(i)>1.14)continue;mesh.getVertexPosition(i,point);mesh.localToWorld(point);const ray=new T.Raycaster(point.clone().add(new T.Vector3(0,3,0)),new T.Vector3(0,-1,0));const hit=ray.intersectObject(cloth)[0];if(hit){min=Math.min(min,hit.distance-3);count++}}return {min,count}})()`)
+    assert.ok(skin.count > 20 && skin.min > 0, `${position}: actual hand mesh must clear the fabric: ${JSON.stringify(skin)}`)
+    handReports.push({ position, hands, skin })
     await shot('blanket-hands-'+position)
   }
   console.log(JSON.stringify(handReports, null, 2))

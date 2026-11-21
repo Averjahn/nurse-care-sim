@@ -15,13 +15,7 @@ export function prepareBedContact(object: Object3D) {
   }
   const coreSamples = mesh ? [...bins.values()].filter(v => Math.abs(mesh!.geometry.getAttribute('position').getX(v.index)) < .18 && mesh!.geometry.getAttribute('position').getY(v.index) < 1.455).map(v => v.index) : []
   const headSamples = mesh ? [...bins.values()].filter(v => mesh!.geometry.getAttribute('position').getY(v.index) > 1.455).map(v => v.index) : []
-  object.updateMatrixWorld(true)
-  const palmNormals = new Map<string, Vector3>()
-  for (const side of ['Left', 'Right']) {
-    const wrist = bones.get(`${side}Hand`)
-    if (wrist) palmNormals.set(side, new Vector3(0, 0, 1).transformDirection(mesh?.matrixWorld ?? object.matrixWorld).applyQuaternion(wrist.getWorldQuaternion(new Quaternion()).invert()))
-  }
-  return { bones, mesh, coreSamples, headSamples, palmNormals, samples: [...bins.values()].map(v => v.index), inverse: new Matrix4(), point: new Vector3(), scale: new Vector3() }
+  return { bones, mesh, coreSamples, headSamples, samples: [...bins.values()].map(v => v.index), inverse: new Matrix4(), point: new Vector3(), scale: new Vector3() }
 }
 /** Bones and mattress consume the same angles, with hips and knees at the same hinges. */
 export function alignPatientBones(calibration: ReturnType<typeof prepareBedContact>, a: BedAngles) {
@@ -124,18 +118,6 @@ export function restPatientArms(object: Object3D, calibration: ReturnType<typeof
       wrist.getWorldPosition(hand)
       target.set(0, Math.sin(a.thigh), Math.cos(a.thigh)).transformDirection(frame.matrixWorld).multiplyScalar(.2).add(hand)
       aim(wrist, fingers, target); object.updateMatrixWorld(true)
-      if (blanket) {
-        // Roll the palm onto the fabric rather than leaving the hand on its edge.
-        const axis = fingers.getWorldPosition(new Vector3()).sub(hand).normalize()
-        const normal = calibration.palmNormals.get(side)!.clone().applyQuaternion(wrist.getWorldQuaternion(new Quaternion()))
-        const desired = new Vector3(0, Math.cos(a.thigh), -Math.sin(a.thigh)).transformDirection(frame.matrixWorld)
-        normal.addScaledVector(axis, -normal.dot(axis)).normalize()
-        desired.addScaledVector(axis, -desired.dot(axis)).normalize()
-        const angle = Math.atan2(axis.dot(normal.clone().cross(desired)), normal.dot(desired))
-        const world = wrist.getWorldQuaternion(new Quaternion()).premultiply(new Quaternion().setFromAxisAngle(axis, angle))
-        wrist.quaternion.copy(wrist.parent!.getWorldQuaternion(new Quaternion()).invert().multiply(world))
-        object.updateMatrixWorld(true)
-      }
     }
   }
 }

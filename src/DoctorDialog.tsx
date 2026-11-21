@@ -2,19 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { requiredActions, type Attempt } from './simulation'
 
-export default function DoctorDialog({ attempt, onHandoff, onOpen }: { attempt: Attempt; onHandoff: () => void; onOpen: () => void }) {
+export default function DoctorDialog({ attempt, onHandoff, onOpen, suspended = false }: { attempt: Attempt; onHandoff: () => void; onOpen: () => void; suspended?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const ready = attempt.completed.includes('record') && requiredActions(attempt).every(id => id === 'handoff' || attempt.completed.includes(id))
   const stage = `${attempt.id}:${ready ? 'ready' : 'arrived'}`
   const [dismissed, setDismissed] = useState('')
   useEffect(() => {
     const element = dialog.current
-    if (!element || dismissed === stage) return
+    if (!element || dismissed === stage || suspended) return
     if (document.pointerLockElement) document.exitPointerLock()
     onOpen()
     element.showModal()
     return () => element.close()
-  }, [stage, dismissed, onOpen])
+  }, [stage, dismissed, onOpen, suspended])
   const close = () => { setDismissed(stage); dialog.current?.close() }
   return <dialog ref={dialog} className="doctor-dialog glass-panel" aria-labelledby="doctor-title" aria-describedby="doctor-reply" onCancel={event => { event.preventDefault(); close() }}>
     <button className="icon-button doctor-close" aria-label="Продолжить помощь пациентке" onClick={close}><X size={18}/></button>

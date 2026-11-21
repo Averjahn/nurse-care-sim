@@ -10,6 +10,8 @@ import { placeActionPopover, type ScreenPoint } from './actionPopover'
 import SceneEditor from './SceneEditor'
 import DoctorDialog from './DoctorDialog'
 import ResultsPanel from './ResultsPanel'
+import BedRemoteOverlay from './BedRemoteOverlay'
+import { useBedRemote } from './bedRemoteStore'
 import { useSceneEditor } from './sceneEditorStore'
 import './App.css'
 import './ResultsPanel.css'
@@ -89,6 +91,9 @@ function App() {
   const [selectedCase, setSelectedCase] = useState<CaseId>('collapse')
   const [mode, setMode] = useState<'training' | 'exam'>('training')
   const [selectedObject, setSelectedObject] = useState<ObjectId | null>(null)
+  const bedBusy = useBedRemote(s => s.phase !== 'idle')
+  const [bedFeedback, setBedFeedback] = useState('')
+  const [bedObservationUntil, setBedObservationUntil] = useState(0)
   const [actionPoint, setActionPoint] = useState<[number, number, number] | null>(null)
   const actionPanelRef = useRef<HTMLElement>(null)
   const panelSize = useRef({ width: 0, height: 0 })
@@ -147,7 +152,11 @@ function App() {
     const current = useSimulationStore.getState().attempt
     if (useSceneEditor.getState().open) { useSceneEditor.getState().select(object === 'cpr' ? 'patient' : object); return }
     if (!current || !['active', 'arrest'].includes(current.phase)) return
+    if (useBedRemote.getState().phase !== 'idle') return
     unlock()
+    if (object === 'bed-controls') {
+      setSelectedObject(null); setBedFeedback(''); useBedRemote.getState().open(firstPerson); return
+    }
     if (object === hint) setAcknowledgedHint(hintKey)
     lastAnchorPoint.current = screen ?? null
     if (screen) positionActionPanel(screen)
@@ -196,6 +205,7 @@ function App() {
       matched = event.code === sequence[matched] ? matched + 1 : event.code === sequence[0] ? 1 : 0
       window.clearTimeout(timeout)
       if (matched === 3 || sequence.every(key => pressed.has(key))) {
+        useBedRemote.getState().reset()
         event.preventDefault(); event.stopImmediatePropagation(); unlock(); setFirstPerson(false); setSelectedObject(null)
         useSceneEditor.getState().toggle(); matched = 0; pressed.clear()
       } else timeout = window.setTimeout(() => { matched = 0 }, 3000)
@@ -211,11 +221,22 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [heldItem])
   const begin = (id = selectedCase) => {
+    useBedRemote.getState().reset(); setBedFeedback(''); setBedObservationUntil(0)
     if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt)
     start(id, { mode, speed: 1 })
     setSelectedObject(null); setAcknowledgedHint(null); setFirstPerson(false); setHeldItem('')
   }
-  const backToMenu = () => { if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt); unlock(); setFirstPerson(false); leave(); setSelectedObject(null) }
+  const backToMenu = () => { useBedRemote.getState().reset(); setBedFeedback(''); if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt); unlock(); setFirstPerson(false); leave(); setSelectedObject(null) }
+  useEffect(() => {
+    if (!bedFeedback) return
+    const timer = window.setTimeout(() => setBedFeedback(''), 6000)
+    return () => window.clearTimeout(timer)
+  }, [bedFeedback])
+  useEffect(() => {
+    if (!bedObservationUntil) return
+    const timer = window.setTimeout(() => setBedObservationUntil(0), Math.max(0, bedObservationUntil - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [bedObservationUntil])
   const doAction = (id: ActionId) => {
     const previous = useSimulationStore.getState().attempt
     act(id)
@@ -232,12 +253,13 @@ function App() {
   const hint = active && attempt?.mode === 'training' ? nextObject(attempt) : null
   const hintKey = `${attempt?.id}:${required.find(id => !attempt?.completed.includes(id)) ?? ''}`
   const contextActions = actionMenu(attempt, selectedObject)
-  return <main className={`app-shell emergency-app ${attempt?.phase === 'arrest' ? 'arrest-mode' : ''}`}>
+  return <main className={`app-shell emergency-app ${bedBusy ? 'bed-remote-active' : ''} ${attempt?.phase === 'arrest' ? 'arrest-mode' : ''}`}>
     <section className="scene-wrap"><RoomScene
       covered={attempt?.completed.includes('blanket') ?? false} firstPerson={firstPerson && active && !editorOpen}
       firstPersonCameraHeight={firstPersonCameraHeight} blanketTransform={blanketTransform} patientTransform={patientTransform}
       actionAnchor={actionAnchor} onActionPosition={positionActionPanel}
-      targetAction={!editorOpen && !selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
+      onBedAction={id => { setFirstPerson(false); setBedObservationUntil(Date.now() + 2500); doAction(id); setBedFeedback(useSimulationStore.getState().attempt?.feedback ?? '') }}
+      targetAction={!bedBusy && !editorOpen && !selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
       animationClock={{ speed: attempt?.speed ?? 1, paused: editorOpen || (attempt?.paused ?? false), compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
       patientState={attempt?.patient}
     /></section>
@@ -277,7 +299,9 @@ function App() {
       {!active && <ResultsPanel attempt={attempt} onRepeat={() => begin(attempt.caseId)} onMenu={backToMenu}/>}
     </>}
     {storageError && <p className="storage-error" role="status">{storageError}</p>}
-    {active && !editorOpen && attempt && (attempt.doctorArrived || attempt.teamArrived) && <DoctorDialog key={attempt.id} attempt={attempt} onOpen={closeActions} onHandoff={() => doAction('handoff')}/>}
+    {active && !editorOpen && attempt && (attempt.doctorArrived || attempt.teamArrived) && <DoctorDialog key={attempt.id} attempt={attempt} suspended={bedBusy || bedObservationUntil > 0} onOpen={closeActions} onHandoff={() => doAction('handoff')}/>}
+    <BedRemoteOverlay/>
+    {bedFeedback && active && !bedBusy && !editorOpen && <p className="bed-feedback glass-panel" role="status">{bedFeedback}</p>}
     {editorOpen && <SceneEditor/>}
 
 

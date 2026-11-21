@@ -1,3 +1,4 @@
+import { waitForBedRemote, pressBedRemote } from './browser-bed-remote.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -84,6 +85,7 @@ try {
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1})
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',clickCount:1})
     await sleep(150)
+    if (id === 'bed-controls') { await waitForBedRemote({ evaluate, wait }); return }
     await wait('document.querySelector(".action-panel")?.style.visibility === "visible"',`${id}: scene click opens anchored actions`)
     const popup=await evaluate(`(()=>{const r=document.querySelector('.action-panel').getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})()`)
     assert.ok(popup.left>=10 && popup.top>=64 && popup.right<=await evaluate('innerWidth')-10 && popup.bottom<=await evaluate('innerHeight')-10,'Popup fits viewport')
@@ -91,7 +93,7 @@ try {
     assert.ok(distance<60,'Popup appears beside the clicked 3D object')
     assert.equal(await evaluate('window.__threeStore.getState().scene.getObjectByName('+JSON.stringify('interaction-'+id)+').userData.hinted'),false,'Click acknowledges hint')
   }
-  const action = name => click('.context-actions button', name)
+  const action = async name => { if (!await pressBedRemote(name, { evaluate, send, wait })) await click('.context-actions button', name) }
   // Real 3D interaction checks for each newly authored device.
   await select('bed-controls'); await action('На спину, согнуть ноги')
   await wait(`(()=>{let rig;window.__threeStore.getState().scene.traverse(o=>{if(o.userData.patientRenderer==='rigged')rig=o});const leg=rig?.getObjectByName('mixamorigLeftUpLeg');return leg&&Math.abs(leg.quaternion.x)>.2})()`, 'flexed knee skeleton pose')

@@ -23,7 +23,7 @@ export default function SceneEditor() {
   const target = state.targets[state.selected]
   const object = useObjectSettings(state.selected) ?? {}
   const color = object.hintColor ?? state.settings.hintColor
-  const maxScale = state.selected === 'patient' ? 1 : object.hintScale ?? target?.hintScale ?? 1.3
+  const maxScale = ['patient', 'bed-controls'].includes(state.selected) ? 1 : object.hintScale ?? target?.hintScale ?? 1.3
   const updateCamera = (patch: Partial<SceneSettings['camera']>) => {
     try { state.updateCamera(patch); setNotice('') }
     catch (e) { setNotice(e instanceof Error ? e.message : 'Проверьте настройки камеры') }
@@ -50,8 +50,8 @@ export default function SceneEditor() {
             <section><div className="editor-section-heading"><h2>Размер</h2><NumberField label="Размер объекта" value={(object.scale ?? 1) * 100} min={5} max={500} step={1} suffix="%" onChange={n => state.updateObject(target.id, { scale: n / 100 })}/></div><input aria-label="Размер объекта ползунок" type="range" min="5" max="500" step="1" value={(object.scale ?? 1) * 100} onChange={e => state.updateObject(target.id, { scale: Number(e.target.value) / 100 })}/><p className="editor-help">100% — исходный размер. Пропорции сохраняются.</p></section>
             {target.id !== 'window' && <section><div className="editor-section-heading"><h2>Мигание</h2><label className="editor-switch"><input type="checkbox" checked={state.preview} onChange={e => state.setPreview(e.target.checked)}/> Предпросмотр</label></div>
               <label className="editor-color">Цвет этого объекта<input aria-label="Цвет мигания объекта" type="color" value={color} onChange={e => state.updateObject(target.id, { hintColor: e.target.value })}/><code>{color.toUpperCase()}</code></label>
-              <div className="editor-section-heading"><label htmlFor="editor-hint-scale">Максимальное увеличение</label><strong>{maxScale.toFixed(2)}×</strong></div><input id="editor-hint-scale" type="range" min="1" max="3" step="0.05" disabled={target.id === 'patient'} value={maxScale} onChange={e => state.updateObject(target.id, { hintScale: Number(e.target.value) })}/>
-              <p className="editor-help">{target.id === 'patient' ? 'Пациентка мигает без изменения размера.' : '1× — только цвет, без увеличения объекта.'}</p>
+              <div className="editor-section-heading"><label htmlFor="editor-hint-scale">Максимальное увеличение</label><strong>{maxScale.toFixed(2)}×</strong></div><input id="editor-hint-scale" type="range" min="1" max="3" step="0.05" disabled={['patient', 'bed-controls'].includes(target.id)} value={maxScale} onChange={e => state.updateObject(target.id, { hintScale: Number(e.target.value) })}/>
+              <p className="editor-help">{target.id === 'patient' ? 'Пациентка мигает без изменения размера.' : target.id === 'bed-controls' ? 'Кнопки пульта мигают без изменения размера.' : '1× — только цвет, без увеличения объекта.'}</p>
               <details className="editor-details"><summary>Общий цвет подсказок</summary><label className="editor-color">Для всех объектов<input aria-label="Общий цвет мигания" type="color" value={state.settings.hintColor} onChange={e => state.setHintColor(e.target.value)}/></label><button className="editor-text" onClick={() => state.updateObject(target.id, { hintColor: undefined, hintScale: undefined })}>Вернуть этому объекту общие настройки</button></details>
             </section>}
             <button className="editor-secondary" onClick={() => state.resetObject(target.id)}><RotateCcw size={14}/> Сбросить этот объект</button>

@@ -19,6 +19,9 @@ import RestoredBed from './RestoredBed'
 import { BED_ORIGIN, PATIENT_BED_POSITION } from './bedKinematics'
 import HospitalWindow from './HospitalWindow'
 import PatientBlanket from './PatientBlanket'
+import BedRemote from './BedRemote'
+import BedRemoteCamera from './BedRemoteCamera'
+import { useBedRemote, type BedButtonId } from './bedRemoteStore'
 import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -49,6 +52,7 @@ interface RoomSceneProps {
   targetAction: SceneAction | null
   onFocusObject?: (object: ObjectId | null) => void
   onAction: (action: SceneAction, point?: [number, number, number], screen?: { x: number; y: number }) => void
+  onBedAction: (action: BedButtonId) => void
   actionAnchor?: { object: ObjectId; point: [number, number, number] | null }
   onActionPosition?: (point: { x: number; y: number }) => void
   onPointerLockChange: (locked: boolean) => void
@@ -94,6 +98,7 @@ function FirstPersonNavigation({
     camera.rotation.set(0.04, -0.72, 0)
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (useBedRemote.getState().phase !== 'idle') return
       const key = event.key.toLowerCase()
       const activeElement = document.activeElement
       const isEditing = activeElement instanceof HTMLElement
@@ -110,6 +115,7 @@ function FirstPersonNavigation({
       sprinting.current = event.shiftKey
     }
     const handlePointerMove = (event: MouseEvent) => {
+      if (useBedRemote.getState().phase !== 'idle') return
       if (document.pointerLockElement !== canvas && !dragging.current) return
       camera.rotation.y -= event.movementX * 0.002
       camera.rotation.x = THREE.MathUtils.clamp(
@@ -125,6 +131,7 @@ function FirstPersonNavigation({
     }
     const handleLockError = () => onPointerLockError()
     const handleCanvasClick = (event: MouseEvent) => {
+      if (useBedRemote.getState().phase !== 'idle') return
       if (event.defaultPrevented) return
       canvas.focus({ preventScroll: true })
       if (document.pointerLockElement === canvas) return
@@ -135,6 +142,7 @@ function FirstPersonNavigation({
       } catch { handleLockError() }
     }
     const handlePointerDown = (event: PointerEvent) => {
+      if (useBedRemote.getState().phase !== 'idle') return
       if (event.button !== 0 || document.pointerLockElement === canvas) return
       dragging.current = true
       canvas.setPointerCapture(event.pointerId)
@@ -182,6 +190,7 @@ function FirstPersonNavigation({
   }, [firstPersonCameraHeight])
 
   useFrame((_, delta) => {
+    if (useBedRemote.getState().phase !== 'idle') return
     const camera = cameraRef.current
     const keys = pressedKeys.current
     const forwardInput = Number(keys.has('w') || keys.has('arrowup')) - Number(keys.has('s') || keys.has('arrowdown'))
@@ -306,7 +315,7 @@ function PatientVisual() {
 
 type HospitalRoomModelProps = Omit<
   RoomSceneProps,
-  'firstPersonCameraHeight' | 'onPointerLockChange' | 'onPointerLockError'
+  'firstPersonCameraHeight' | 'onPointerLockChange' | 'onPointerLockError' | 'onBedAction'
 >
 
 function HospitalRoomModel(props: HospitalRoomModelProps) {
@@ -541,6 +550,7 @@ function Room({
   patientTransform,
   targetAction,
   onAction,
+  onBedAction,
   onPointerLockChange,
   onPointerLockError,
   onFocusObject,
@@ -550,6 +560,7 @@ function Room({
   onActionPosition,
 }: RoomSceneProps) {
   const editorOpen = useSceneEditor(s => s.open)
+  const cameraTarget = useSceneEditor(s => s.settings.camera.target)
   return (
     <>
     <color attach="background" args={['#e9f1ef']} />
@@ -579,7 +590,7 @@ function Room({
     ) : (
       <OrbitControls
         makeDefault
-        target={[.15, 1.3, -2.1]}
+        target={cameraTarget}
         minDistance={0.5}
         maxDistance={40}
         minPolarAngle={Math.PI / 4}
@@ -590,6 +601,7 @@ function Room({
       />
     )}
     <SceneEditorControls firstPerson={firstPerson} simulationActive={!!patientState} />
+    <BedRemoteCamera onCommit={onBedAction}/>
     </>
   )
 }
@@ -730,7 +742,7 @@ function BedsideInteractions({ targetAction, onAction }: Pick<RoomSceneProps, 't
   const bell = useRef<THREE.Group>(null)
   const placements = useMemo(() => sceneObjects.filter(o => ['call-bell', 'bed-controls'].includes(o.id)).map(o => ({ ...o, position: o.position.map((v, i) => v - BED_ORIGIN[i]) as [number, number, number] })), [])
   useFrame(() => { bell.current?.rotation.set(motion.current.angles.head, 0, 0) })
-  return <>{placements.map(object => object.id === 'call-bell' ? <group ref={bell} key={object.id}><EmergencyObject object={object} highlighted={targetAction === object.id} onAction={onAction}/></group> : <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}</>
+  return <>{placements.map(object => object.id === 'call-bell' ? <group ref={bell} key={object.id}><EmergencyObject object={object} highlighted={targetAction === object.id} onAction={onAction}/></group> : <EditableTarget key={object.id} id="bed-controls" label="Пульт кровати" position={object.position} rotation={object.rotation} hintScale={1}><BedRemote highlighted={targetAction === object.id} onOpen={() => onAction('bed-controls')}/></EditableTarget>)}</>
 }
 /** Pulse the actual mesh materials, never a proxy box. All materials here
  * belong to the mounted scene instance (patient materials are cloned on load). */

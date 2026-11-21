@@ -1,0 +1,9 @@
+.bed-remote-overlay { position: absolute; z-index: 8; top: 78px; left: 20px; max-width: min(290px, calc(100vw - 40px)); padding: 16px; border-radius: 14px; }
+.bed-remote-overlay > strong { font-size: 15px; }
+.bed-remote-overlay p { font-size: 12px; color: #527568; margin: 8px 0 0; }
+.bed-remote-overlay button { margin-top: 12px; font-size: 11px; width: 100%; }
+.bed-button-tooltip { display: block; width: max-content; max-width: 245px; padding: 9px 12px; border: 1px solid #9dc9b1; border-radius: 9px; background: #fcfffaf5; color: #284f42; box-shadow: 0 3px 15px #153b3033; font: 12px/1.5 system-ui, sans-serif; text-align: center; }
+.bed-button-tooltip small { display: block; color: #6d7b72; font-size: 10px; }
+.bed-feedback { position: absolute; z-index: 8; left: 50%; bottom: 25px; transform: translateX(-50%); width: min(520px, calc(100vw - 30px)); padding: 13px 17px; border-radius: 12px; color: #365f4d; font-size: 12px; line-height: 1.6; }
+.bed-remote-active .patient-panel, .bed-remote-active .header-actions, .bed-remote-active .crosshair, .bed-remote-active .crosshair-label, .bed-remote-active .navigation-help { display: none; }
+@media (max-width: 800px) { .bed-remote-overlay { top: auto; bottom: 12px; left: 12px; max-width: calc(100vw - 24px); width: calc(100vw - 24px); padding: 12px; } .bed-remote-overlay p { font-size: 11px; } .bed-remote-overlay button { min-height: 36px; margin-top: 8px; } }

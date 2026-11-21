@@ -86,20 +86,23 @@ export function seatPatientOnMattress(object: Object3D, calibration: ReturnType<
 /** Two-bone arm IK keeps the hands above the mattress as the backrest rises. */
 export function restPatientArms(object: Object3D, calibration: ReturnType<typeof prepareBedContact>, frame: Object3D, a: BedAngles) {
   const point = new Vector3(), shoulder = new Vector3(), elbow = new Vector3(), hand = new Vector3(), target = new Vector3(), bend = new Vector3(), direction = new Vector3()
+  const seated = Math.min(1, Math.max(0, Math.sin(a.head) / Math.sin(Math.PI / 4)))
   for (const [side, sign] of [['Left', 1], ['Right', -1]] as const) {
     const upper = calibration.bones.get(`${side}Arm`), lower = calibration.bones.get(`${side}ForeArm`), wrist = calibration.bones.get(`${side}Hand`)
     if (!upper || !lower || !wrist) continue
     upper.getWorldPosition(shoulder); lower.getWorldPosition(elbow); wrist.getWorldPosition(hand)
     const l1 = shoulder.distanceTo(elbow), l2 = elbow.distanceTo(hand)
-    // Hands rest beside the hips, under the cloth, instead of reaching above it.
-    const [y, z] = bedPoint(.12, .12, a)
+    // As the backrest rises, rest the hands beside the thighs and let the elbows
+    // drop beside the waist. A low wrist target with an outward elbow pole
+    // produces the suspended, akimbo pose in Fowler's position.
+    const [y, z] = bedPoint(.12 + .13 * seated, .12 + .23 * seated, a)
     target.set(sign * .43, y, z)
     frame.localToWorld(target)
     direction.copy(target).sub(shoulder)
     const distance = Math.min(direction.length(), (l1 + l2) * .985); direction.normalize()
     const along = (l1 * l1 - l2 * l2 + distance * distance) / (2 * distance)
     const height = Math.sqrt(Math.max(0, l1 * l1 - along * along))
-    bend.set(sign * .6, .06, .2).transformDirection(frame.matrixWorld); bend.addScaledVector(direction, -bend.dot(direction)).normalize()
+    bend.set(sign * .6 * (1 - seated), .06 - .96 * seated, .2 - .15 * seated).transformDirection(frame.matrixWorld); bend.addScaledVector(direction, -bend.dot(direction)).normalize()
     point.copy(shoulder).addScaledVector(direction, along).addScaledVector(bend, height)
     frame.worldToLocal(point)
     point.y = Math.max(point.y, (mattressHeight(point.z, a) ?? 0) + .12)
@@ -112,8 +115,12 @@ export function restPatientArms(object: Object3D, calibration: ReturnType<typeof
     const fingers = calibration.bones.get(`${side}Hand_End`)
     if (fingers) {
       wrist.getWorldPosition(hand)
-      target.set(0, Math.sin(a.thigh), Math.cos(a.thigh)).transformDirection(frame.matrixWorld).multiplyScalar(.2).add(hand)
-      aim(wrist, fingers, target); object.updateMatrixWorld(true)
+      target.set(0, Math.sin(a.thigh) - .22 * seated, Math.cos(a.thigh)).normalize().transformDirection(frame.matrixWorld).multiplyScalar(.2).add(hand)
+      aim(wrist, fingers, target)
+      // Keep a neutral wrist in the seated pose. The generated Hand_End joint
+      // does not follow the curled fingers; aiming at it twists the skin.
+      if (seated > 0) wrist.quaternion.slerp(new Quaternion(), seated)
+      object.updateMatrixWorld(true)
     }
   }
 }

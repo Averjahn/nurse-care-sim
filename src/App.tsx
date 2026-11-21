@@ -10,6 +10,7 @@ import { placeActionPopover, type ScreenPoint } from './actionPopover'
 import SceneEditor from './SceneEditor'
 import DoctorDialog from './DoctorDialog'
 import ResultsPanel from './ResultsPanel'
+import TimeoutDialog from './TimeoutDialog'
 import BedRemoteOverlay from './BedRemoteOverlay'
 import { useBedRemote } from './bedRemoteStore'
 import { useSceneEditor } from './sceneEditorStore'
@@ -255,12 +256,12 @@ function App() {
   const contextActions = actionMenu(attempt, selectedObject)
   return <main className={`app-shell emergency-app ${bedBusy ? 'bed-remote-active' : ''} ${attempt?.phase === 'arrest' ? 'arrest-mode' : ''}`}>
     <section className="scene-wrap"><RoomScene
-      covered={attempt?.completed.includes('blanket') ?? false} firstPerson={firstPerson && active && !editorOpen}
+      covered={attempt?.completed.includes('blanket') ?? false} firstPerson={firstPerson && !!attempt && !editorOpen}
       firstPersonCameraHeight={firstPersonCameraHeight} blanketTransform={blanketTransform} patientTransform={patientTransform}
       actionAnchor={actionAnchor} onActionPosition={positionActionPanel}
       onBedAction={id => { setFirstPerson(false); setBedObservationUntil(Date.now() + 2500); doAction(id); setBedFeedback(useSimulationStore.getState().attempt?.feedback ?? '') }}
       targetAction={!bedBusy && !editorOpen && !selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
-      animationClock={{ speed: attempt?.speed ?? 1, paused: editorOpen || (attempt?.paused ?? false), compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
+      animationClock={{ speed: attempt?.speed ?? 1, paused: editorOpen || (attempt?.paused ?? false) || Boolean(attempt && !active), compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
       patientState={attempt?.patient}
     /></section>
     {attempt && !editorOpen && <header className="emergency-header">
@@ -296,7 +297,8 @@ function App() {
         {firstPerson && <div className="navigation-help glass-panel">{navigationHint || (pointerLocked ? 'WASD · Shift — быстрее · E — взаимодействие · Esc — курсор' : 'Клик по палате — управление мышью')}</div>}
         {heldItem && <div className="held-item"><span/><strong>{heldItem}</strong></div>}
       </>}
-      {!active && <ResultsPanel attempt={attempt} onRepeat={() => begin(attempt.caseId)} onMenu={backToMenu}/>}
+      {attempt.phase === 'finished' && <ResultsPanel attempt={attempt} onRepeat={() => begin(attempt.caseId)} onMenu={backToMenu}/>}
+      {attempt.phase === 'failed' && <TimeoutDialog key={attempt.id} onRetry={() => begin(attempt.caseId)} onMenu={backToMenu}/>}
     </>}
     {storageError && <p className="storage-error" role="status">{storageError}</p>}
     {active && !editorOpen && attempt && (attempt.doctorArrived || attempt.teamArrived) && <DoctorDialog key={attempt.id} attempt={attempt} suspended={bedBusy || bedObservationUntil > 0} onOpen={closeActions} onHandoff={() => doAction('handoff')}/>}

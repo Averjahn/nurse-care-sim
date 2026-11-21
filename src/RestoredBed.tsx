@@ -48,6 +48,8 @@ export default function RestoredBed({ source, sourceMatrix }: { source: Object3D
   }, [motion])
   useEffect(() => () => prepared.geometries.forEach(g => g.dispose()), [prepared])
   useFrame(() => {
+    const attempt = useSimulationStore.getState().attempt
+    if (attempt && !['active', 'arrest'].includes(attempt.phase)) return
     const a = motion.current.angles
     Object.assign(prepared.object.userData, { bedAngles: a })
     const key = `${a.head},${a.thigh},${a.shin}`

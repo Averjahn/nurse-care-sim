@@ -9,6 +9,7 @@ export function BedMotionProvider({ children }: { children: ReactNode }) {
   const transition = useRef({ from: targetBedAngles('supine'), to: targetBedAngles('supine'), progress: 1, position: 'supine', attempt: '' })
   useFrame((_, dt) => {
     const a = useSimulationStore.getState().attempt, t = transition.current
+    if (a && !['active', 'arrest'].includes(a.phase)) return
     const position = positionForBed(a?.patient)
     if (t.attempt !== (a?.id ?? '')) {
       t.attempt = a?.id ?? ''; t.position = position; t.to = targetBedAngles(position); t.from = t.to; t.progress = 1

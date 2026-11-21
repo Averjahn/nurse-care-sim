@@ -98,6 +98,7 @@ function FirstPersonNavigation({
     camera.rotation.set(0.04, -0.72, 0)
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
       if (useBedRemote.getState().phase !== 'idle') return
       const key = event.key.toLowerCase()
       const activeElement = document.activeElement
@@ -115,6 +116,7 @@ function FirstPersonNavigation({
       sprinting.current = event.shiftKey
     }
     const handlePointerMove = (event: MouseEvent) => {
+      if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
       if (useBedRemote.getState().phase !== 'idle') return
       if (document.pointerLockElement !== canvas && !dragging.current) return
       camera.rotation.y -= event.movementX * 0.002
@@ -131,6 +133,7 @@ function FirstPersonNavigation({
     }
     const handleLockError = () => onPointerLockError()
     const handleCanvasClick = (event: MouseEvent) => {
+      if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
       if (useBedRemote.getState().phase !== 'idle') return
       if (event.defaultPrevented) return
       canvas.focus({ preventScroll: true })
@@ -142,6 +145,7 @@ function FirstPersonNavigation({
       } catch { handleLockError() }
     }
     const handlePointerDown = (event: PointerEvent) => {
+      if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
       if (useBedRemote.getState().phase !== 'idle') return
       if (event.button !== 0 || document.pointerLockElement === canvas) return
       dragging.current = true
@@ -190,6 +194,7 @@ function FirstPersonNavigation({
   }, [firstPersonCameraHeight])
 
   useFrame((_, delta) => {
+    if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
     if (useBedRemote.getState().phase !== 'idle') return
     const camera = cameraRef.current
     const keys = pressedKeys.current
@@ -561,6 +566,7 @@ function Room({
 }: RoomSceneProps) {
   const editorOpen = useSceneEditor(s => s.open)
   const cameraTarget = useSceneEditor(s => s.settings.camera.target)
+  const ended = useSimulationStore(s => s.attempt?.phase === 'failed' || s.attempt?.phase === 'finished')
   return (
     <>
     <color attach="background" args={['#e9f1ef']} />
@@ -590,6 +596,7 @@ function Room({
     ) : (
       <OrbitControls
         makeDefault
+        enabled={editorOpen || !ended}
         target={cameraTarget}
         minDistance={0.5}
         maxDistance={40}
@@ -777,13 +784,17 @@ function EmergencyObject({ object, highlighted, onAction, visual }: { object: Sc
     </SceneInteraction>
   </EditableTarget>
 }
-function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject, patientState }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
+function EmergencyObjects({ firstPerson, targetAction, onAction, onFocusObject }: Pick<RoomSceneProps, 'firstPerson' | 'targetAction' | 'onAction' | 'onFocusObject' | 'patientState'>) {
   const editorOpen = useSceneEditor(s => s.open)
   const episode = useSimulationStore(s => s.attempt?.episode)
+  const ended = useSimulationStore(s => s.attempt?.phase === 'failed' || s.attempt?.phase === 'finished')
+  const [lastVisibleEpisode, setLastVisibleEpisode] = useState(episode)
+  if (!ended && lastVisibleEpisode !== episode) setLastVisibleEpisode(episode)
+  const visibleEpisode = ended ? lastVisibleEpisode : episode
   const layout = useSceneEditor(s => s.layout)
   const catalog = useSceneEditor(s => s.catalog)
   return <>
-    {sceneObjects.filter(o => !['call-bell', 'bed-controls', 'aed-device'].includes(o.id) && (editorOpen ? catalog || objectInCase(o.id, layout ? layout as Parameters<typeof objectInCase>[1] : undefined) : patientState?.breathing === false ? ['bag-mask', 'oxygen'].includes(o.id) : objectInCase(o.id, episode))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
+    {sceneObjects.filter(o => !['call-bell', 'bed-controls', 'aed-device'].includes(o.id) && (editorOpen ? catalog || objectInCase(o.id, layout ? layout as Parameters<typeof objectInCase>[1] : undefined) : objectInCase(o.id, visibleEpisode))).map(object => <EmergencyObject key={object.id} object={object} highlighted={targetAction === object.id} onAction={onAction}/>)}
     {firstPerson && <CenterInteraction onAction={onAction} onFocusObject={onFocusObject}/>}
   </>
 }

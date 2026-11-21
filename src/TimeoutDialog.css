@@ -1,0 +1,8 @@
+.timeout-dialog { width: min(450px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; margin: auto; padding: 30px; border-radius: 22px; color: #233e3b; text-align: center; }
+.timeout-dialog::backdrop { background: #173c3440; }
+.timeout-icon { display: inline-grid; place-items: center; width: 58px; height: 58px; margin-bottom: 16px; color: #9b701a; border: 1px solid #e4cf9d; background: #fff6df; border-radius: 18px; }
+.timeout-dialog h1 { margin: 0 0 12px; font-size: 25px; line-height: 1.25; letter-spacing: -.6px; }
+.timeout-dialog p { font-size: 14px; color: #637c6d; margin-bottom: 23px; }
+.timeout-actions { display: grid; gap: 10px; }
+.timeout-actions button { width: 100%; }
+@media (max-width: 800px) { .timeout-dialog { padding: 24px 20px; } .timeout-dialog h1 { font-size: 23px; } }

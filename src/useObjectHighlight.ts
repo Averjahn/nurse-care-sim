@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Object3D } from 'three'
 import { bindInteractionHighlight } from './interactionHighlight'
+import { useSimulationStore } from './store'
 
 export function useObjectHighlight(ref: RefObject<Object3D | null>, active: boolean, hovered: boolean, growth: number, color: string) {
   const [reducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -9,6 +10,8 @@ export function useObjectHighlight(ref: RefObject<Object3D | null>, active: bool
   const elapsed = useRef(0)
   useEffect(() => () => cached.current?.binding.dispose(), [])
   useFrame((_, delta) => {
+    const attempt = useSimulationStore.getState().attempt
+    if (attempt && !['active', 'arrest'].includes(attempt.phase)) return
     const root = ref.current
     if (!root) return
     const child = root.children[0]

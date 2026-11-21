@@ -47,7 +47,7 @@ export function MonitorScreen() {
   }, [])
   useEffect(() => () => texture.dispose(), [texture])
   useFrame((_, dt) => {
-    if (!editor && !attempt?.paused) time.current += dt
+    if (!editor && !attempt?.paused && (!attempt || ['active', 'arrest'].includes(attempt.phase))) time.current += dt
     redraw.current += dt
     if (redraw.current < 1 / 30) return
     redraw.current = 0

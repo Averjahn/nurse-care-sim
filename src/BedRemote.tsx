@@ -21,6 +21,8 @@ function RemoteButton({ id, label, x, y, hinted, enabled, onOpen }: { id: BedBut
   useEffect(() => () => texture.dispose(), [texture])
   useObjectHighlight(face, hinted, hovered && enabled, 0, color)
   useFrame((_, dt) => {
+    const attempt = useSimulationStore.getState().attempt
+    if (attempt && !['active', 'arrest'].includes(attempt.phase)) return
     const remote = useBedRemote.getState(), pressing = remote.phase === 'pressing' && remote.action === id
     if (pressing !== wasPressed.current) { age.current = 0; wasPressed.current = pressing; if (pressing) maxDepth.current = 0 }
     age.current += Math.min(dt, .1)
@@ -49,7 +51,8 @@ function RemoteButton({ id, label, x, y, hinted, enabled, onOpen }: { id: BedBut
 export default function BedRemote({ highlighted, onOpen }: { highlighted: boolean; onOpen: () => void }) {
   const attempt = useSimulationStore(s => s.attempt), phase = useBedRemote(s => s.phase)
   const editor = useSceneEditor(s => s.open), preview = useSceneEditor(s => s.open && s.preview && s.selected === 'bed-controls')
-  const expected = suggestedBedButton(attempt), available = actionMenu(attempt, 'bed-controls').map(item => item.id)
+  const availability = attempt?.phase === 'failed' && attempt.arrestAt !== null ? { ...attempt, phase: 'arrest' as const } : attempt
+  const expected = suggestedBedButton(attempt), available = actionMenu(availability, 'bed-controls').map(item => item.id)
   return <group name="interaction-bed-controls" userData={{ emergencyObject: 'bed-controls', hinted: highlighted }} onClick={event => { event.stopPropagation(); if (!document.pointerLockElement) onOpen() }}>
     <mesh position={[0, 0, -.06]}><boxGeometry args={[.15, .38, .08]}/><meshStandardMaterial color="#8ba39b" roughness={.65} metalness={.25}/></mesh>
     <RoundedBox args={[.42, .57, .10]} radius={.035} smoothness={4}><meshStandardMaterial color="#f2f5ef" roughness={.65}/></RoundedBox>

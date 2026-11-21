@@ -15,6 +15,13 @@ export default function BedRemoteCamera({ onCommit }: { onCommit: (action: BedBu
   useFrame(({ camera, controls, scene, size }, rawDelta) => {
     if (!(camera instanceof PerspectiveCamera)) return
     const remote = useBedRemote.getState(), attempt = useSimulationStore.getState().attempt, orbit = controls as unknown as Orbit | null
+    if (attempt && !['active', 'arrest'].includes(attempt.phase)) {
+      // End in place: abandoning a pending press must not restore an earlier view.
+      flight.current = null
+      if (orbit) orbit.enabled = useSceneEditor.getState().open
+      if (remote.phase !== 'idle') remote.reset()
+      return
+    }
     const read = (): View => ({ position: camera.position.clone(), target: orbit?.target.clone() ?? camera.getWorldDirection(new Vector3()).multiplyScalar(3).add(camera.position), fov: camera.fov, offsetX: camera.view?.enabled ? camera.view.offsetX : 0, offsetY: camera.view?.enabled ? camera.view.offsetY : 0 })
     const apply = (from: View, to: View, t: number) => {
       camera.position.lerpVectors(from.position, to.position, t)

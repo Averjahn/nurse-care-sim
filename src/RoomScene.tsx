@@ -22,6 +22,7 @@ import PatientBlanket from './PatientBlanket'
 import BedRemote from './BedRemote'
 import BedRemoteCamera from './BedRemoteCamera'
 import { useBedRemote, type BedButtonId } from './bedRemoteStore'
+import { useOxygenMask } from './oxygenMaskStore'
 import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -99,7 +100,7 @@ function FirstPersonNavigation({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
-      if (useBedRemote.getState().phase !== 'idle') return
+      if (useBedRemote.getState().phase !== 'idle' || useOxygenMask.getState().dragging) return
       const key = event.key.toLowerCase()
       const activeElement = document.activeElement
       const isEditing = activeElement instanceof HTMLElement
@@ -117,7 +118,7 @@ function FirstPersonNavigation({
     }
     const handlePointerMove = (event: MouseEvent) => {
       if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
-      if (useBedRemote.getState().phase !== 'idle') return
+      if (useBedRemote.getState().phase !== 'idle' || useOxygenMask.getState().dragging) return
       if (document.pointerLockElement !== canvas && !dragging.current) return
       camera.rotation.y -= event.movementX * 0.002
       camera.rotation.x = THREE.MathUtils.clamp(
@@ -134,7 +135,7 @@ function FirstPersonNavigation({
     const handleLockError = () => onPointerLockError()
     const handleCanvasClick = (event: MouseEvent) => {
       if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
-      if (useBedRemote.getState().phase !== 'idle') return
+      if (useBedRemote.getState().phase !== 'idle' || useOxygenMask.getState().dragging) return
       if (event.defaultPrevented) return
       canvas.focus({ preventScroll: true })
       if (document.pointerLockElement === canvas) return
@@ -146,7 +147,7 @@ function FirstPersonNavigation({
     }
     const handlePointerDown = (event: PointerEvent) => {
       if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
-      if (useBedRemote.getState().phase !== 'idle') return
+      if (useBedRemote.getState().phase !== 'idle' || useOxygenMask.getState().dragging) return
       if (event.button !== 0 || document.pointerLockElement === canvas) return
       dragging.current = true
       canvas.setPointerCapture(event.pointerId)
@@ -195,7 +196,7 @@ function FirstPersonNavigation({
 
   useFrame((_, delta) => {
     if (!['active', 'arrest'].includes(useSimulationStore.getState().attempt?.phase ?? '')) return
-    if (useBedRemote.getState().phase !== 'idle') return
+    if (useBedRemote.getState().phase !== 'idle' || useOxygenMask.getState().dragging) return
     const camera = cameraRef.current
     const keys = pressedKeys.current
     const forwardInput = Number(keys.has('w') || keys.has('arrowup')) - Number(keys.has('s') || keys.has('arrowdown'))
@@ -566,6 +567,7 @@ function Room({
 }: RoomSceneProps) {
   const editorOpen = useSceneEditor(s => s.open)
   const cameraTarget = useSceneEditor(s => s.settings.camera.target)
+  const maskDragging = useOxygenMask(s => s.dragging)
   const ended = useSimulationStore(s => s.attempt?.phase === 'failed' || s.attempt?.phase === 'finished')
   return (
     <>
@@ -596,7 +598,7 @@ function Room({
     ) : (
       <OrbitControls
         makeDefault
-        enabled={editorOpen || !ended}
+        enabled={!maskDragging && (editorOpen || !ended)}
         target={cameraTarget}
         minDistance={0.5}
         maxDistance={40}
@@ -663,6 +665,7 @@ function ArticulatedPatient({ patient, clock, showSupports = true }: { patient: 
   })
   return <group ref={body} position={[0, .15, 0]} userData={{ patientRenderer: 'fallback' }}>
     <group ref={torso} position={[0, 0.15, 0]}>
+      <group name="oxygen-face-anchor" position={[0, .31, -.79]} rotation={[-Math.PI / 2, 0, 0]}/>
       <mesh ref={breath} position={[0, 0.09, -0.3]}><boxGeometry args={[0.45, 0.22, 0.65]}/><meshStandardMaterial color="#b7d9dc" roughness={0.85}/></mesh>
       <mesh position={[0, 0.13, -0.86]} scale={[0.8, 0.85, 1]}><sphereGeometry args={[0.2, 24, 16]}/><meshStandardMaterial color={skin}/></mesh>
       <mesh position={[0, 0.13, -0.96]} scale={[0.85, 0.8, 0.65]}><sphereGeometry args={[0.2, 18, 12]}/><meshStandardMaterial color="#62534f"/></mesh>
@@ -765,7 +768,7 @@ function SceneInteraction({ id, alias, highlighted, growth = 0, onAction, childr
   const defaultColor = useSceneEditor(s => s.settings.hintColor)
   const color = settings?.hintColor ?? defaultColor
   const maxScale = settings?.hintScale ?? 1 + growth
-  useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' ? 0 : maxScale - 1, color)
+  useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' || id === 'oxygen' ? 0 : maxScale - 1, color)
   const content = <group ref={ref} name={alias ?? `interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
     onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (useSceneEditor.getState().open) { selectEditorSceneObject(editorId); return }; if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
     onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}

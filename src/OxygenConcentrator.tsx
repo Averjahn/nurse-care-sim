@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { RoundedBox } from '@react-three/drei'
-import { CatmullRomCurve3, ExtrudeGeometry, Shape, TubeGeometry, Vector3 } from 'three'
+import { CatmullRomCurve3, ExtrudeGeometry, Group, Shape, TubeGeometry, Vector3 } from 'three'
+import OxygenMask from './OxygenMask'
 
 const cream = '#e7dfd3'
 export const CONCENTRATOR_BASE_OFFSET = .458
@@ -12,6 +13,7 @@ function HousingPart({ size, at, color = cream, radius = .012 }: { size: [number
 
 /** Code-native, unbranded wheeled concentrator based on the supplied reference. */
 function OxygenConcentrator({ running }: { running: boolean }) {
+  const dock = useRef<Group>(null), outlet = useRef<Group>(null)
   const geometries = useMemo(() => {
     const profile = new Shape()
     profile.moveTo(-.21, .12); profile.lineTo(.21, .12); profile.lineTo(.21, .84)
@@ -29,6 +31,8 @@ function OxygenConcentrator({ running }: { running: boolean }) {
   // Preserve the interaction origin; caster contact matches the tiled floor.
   return <group name="oxygen-concentrator" position={[0, -CONCENTRATOR_BASE_OFFSET, 0]}>
     <group scale={.85}>
+      <group ref={dock} name="oxygen-mask-dock" position={[.14, .88, .27]} rotation={[-.4, 0, .2]}/>
+      <group ref={outlet} name="oxygen-hose-outlet" position={[-.16, .735, .30]}/>
       <mesh geometry={geometries.body} name="concentrator-housing"><meshStandardMaterial color={cream} roughness={.62}/></mesh>
       <HousingPart size={[.61, .065, .48]} at={[0, .105, 0]} color="#80666a" radius={.018}/>
       <HousingPart size={[.60, .035, .47]} at={[0, .15, 0]} radius={.012}/>
@@ -68,6 +72,7 @@ function OxygenConcentrator({ running }: { running: boolean }) {
       <mesh geometry={geometries.hose} name="concentrator-oxygen-tube"><meshStandardMaterial color="#bedfdb" transparent opacity={.65} roughness={.35}/></mesh>
       <mesh geometry={geometries.cable}><meshStandardMaterial color="#58625f" roughness={.8}/></mesh>
     </group>
+    <OxygenMask dock={dock} outlet={outlet}/>
   </group>
 }
 

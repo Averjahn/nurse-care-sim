@@ -26,3 +26,8 @@ export function actionMenuComplete(a: Attempt, object: ObjectId) {
   const required = requiredActions(a)
   return !actionMenu(a, object).some(action => required.includes(action.id) && !a.completed.includes(action.id))
 }
+
+export function shouldCloseActionMenu(before: Attempt, after: Attempt, object: ObjectId | null) {
+  const progressed = after.completed.length > before.completed.length || after.compressions > before.compressions || after.ventilations > before.ventilations || after.events.slice(before.events.length).some(event => event.kind === 'action')
+  return progressed && (after.mode === 'training' || (!!object && actionMenuComplete(after, object)))
+}

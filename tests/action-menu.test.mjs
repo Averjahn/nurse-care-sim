@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { actionMenu, actionMenuComplete } from '../src/actionMenu.ts'
+import { actionMenu, actionMenuComplete, shouldCloseActionMenu } from '../src/actionMenu.ts'
 import { createAttempt, performAction, requiredActions, tickAttempt } from '../src/simulation.ts'
 
 test('a completed thermometer menu closes despite optional choices on other objects', () => {
@@ -25,6 +25,19 @@ test('an unfinished required action keeps ECG actions open', () => {
 test('rejected actions do not complete a menu', () => {
   const a = performAction(createAttempt('chest-pain'), 'ecg')
   assert.equal(actionMenuComplete(a, 'ecg-device'), false)
+})
+for (const [object, action, caseId] of [['ecg-device', 'attach-electrodes', 'chest-pain'], ['call-bell', 'call-doctor', 'chest-pain'], ['patient', 'inspect', 'collapse']]) {
+  test(`training closes ${object} after ${action}, even with more required actions`, () => {
+    const before = createAttempt(caseId, { mode: 'training' })
+    const after = performAction(before, action)
+    assert.equal(shouldCloseActionMenu(before, after, object), true)
+  })
+}
+test('exam keeps ECG open after electrodes; a rejected ECG action stays open in training', () => {
+  const exam = createAttempt('chest-pain', { mode: 'exam' })
+  assert.equal(shouldCloseActionMenu(exam, performAction(exam, 'attach-electrodes'), 'ecg-device'), false)
+  const training = createAttempt('chest-pain', { mode: 'training' })
+  assert.equal(shouldCloseActionMenu(training, performAction(training, 'ecg'), 'ecg-device'), false)
 })
 test('repeat measurement remains available when stabilization happens during the first measurement', () => {
   let a = createAttempt('abdomen')

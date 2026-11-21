@@ -107,7 +107,7 @@ try {
   await select('glucometer'); await action('Измерить глюкозу')
   assert.equal(await evaluate('window.__simulation.getState().attempt.glucoseMeasurement.value'), 5.4)
   await evaluate(`window.__simulation.getState().start('chest-pain',{variant:'responsive',nitroMinSbp:100})`)
-  await select('ecg-device');await action('Наложить электроды');await action('Снять ЭКГ')
+  await select('ecg-device');await action('Наложить электроды');await select('ecg-device');await action('Снять ЭКГ')
   assert.ok(await evaluate(`window.__simulation.getState().attempt.completed.includes('ecg')`))
   await select('bed-controls');await action('Помочь принять полусидячее')
   await shot('07-ecg')

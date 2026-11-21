@@ -19,6 +19,7 @@ import { useBedMotion } from './bedMotionContext'
 import RestoredBed from './RestoredBed'
 import { BED_ORIGIN, PATIENT_BED_POSITION, bedPoint } from './bedKinematics'
 import HospitalWindow from './HospitalWindow'
+import { BLANKET, blanketHeight } from './blanketProfile'
 import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -41,7 +42,6 @@ export interface BlanketTransform {
 interface RoomSceneProps {
   patientState?: PatientState
   animationClock?: AnimationClock
-  doctorArrived?: boolean
   covered: boolean
   firstPerson: boolean
   firstPersonCameraHeight: number
@@ -312,23 +312,11 @@ function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
   const { surface, hem, restSurface, restHem } = useMemo(() => {
     const columns = 36
     const rows = 72
-    const width = 1.8
-    const length = 1.65
-    const startZ = -0.58
+    const { width, length, startZ } = BLANKET
     const surface = new THREE.BufferGeometry()
     const positions: number[] = []
     const indices: number[] = []
-    const heightAt = (x: number, along: number) => {
-      const distanceFromCenter = Math.abs(x)
-      const torsoDome = Math.max(0, 1 - (distanceFromCenter / 0.38) ** 2) * 0.16
-      const sideDrape = Math.max(0, (distanceFromCenter - 0.57) / 0.33) * 0.3
-      const folds = (
-        Math.sin(along * 29 + distanceFromCenter * 8) * 0.016
-        + Math.sin(along * 53 - distanceFromCenter * 13) * 0.007
-      ) * (0.3 + Math.min(sideDrape, 1))
-      const endFold = Math.exp(-(((along - 0.94) / 0.035) ** 2)) * 0.045
-      return 0.33 + Math.sin(Math.PI * along) * 0.08 + 0.08 * Math.exp(-along / .15) + 0.07 * Math.exp(-(1 - along) / .15) + torsoDome - sideDrape + folds + endFold
-    }
+    const heightAt = (x: number, along: number) => blanketHeight(x, startZ + along * length)
 
     for (let row = 0; row <= rows; row += 1) {
       const along = row / rows
@@ -375,6 +363,9 @@ function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
   useFrame(() => {
     const group = root.current, frame = motion?.current.frame
     if (!group || !frame) return
+    // The context holds the shared mutable animation frame, like its bed angles.
+    // oxlint-disable-next-line react/immutability
+    motion!.current.blanket = group
     let ancestor: THREE.Object3D | null = group
     while (ancestor) { if (!ancestor.visible) return; ancestor = ancestor.parent }
     group.updateWorldMatrix(true, false); frame.updateWorldMatrix(true, false)
@@ -517,7 +508,6 @@ function HospitalRoomAsset({
   onFocusObject,
   patientState,
   animationClock = DEFAULT_ANIMATION_CLOCK,
-  doctorArrived,
   modelUrl,
 }: HospitalRoomModelProps & { modelUrl: string }) {
   const { scene } = useGLTF(modelUrl)
@@ -631,12 +621,6 @@ function HospitalRoomAsset({
     <WallStorageShelf />
     <WallStorageShelf left />
     <EmergencyObjects onFocusObject={onFocusObject} firstPerson={firstPerson} targetAction={targetAction} onAction={onAction} patientState={patientState} />
-    {doctorArrived && <EditableTarget id="doctor" label="Врач" position={[2.9, 0, 1.5]} hintScale={1}><EditorPulse id="doctor">
-      <mesh position={[0, 1.1, 0]}><capsuleGeometry args={[0.24, 0.65, 6, 12]}/><meshStandardMaterial color="#f6fcfa"/></mesh>
-      <mesh position={[0, 1.75, 0]}><sphereGeometry args={[0.18, 16, 12]}/><meshStandardMaterial color="#dcb297"/></mesh>
-      {[-0.13, 0.13].map(x => <mesh key={x} position={[x, 0.43, 0]}><capsuleGeometry args={[0.08, 0.65, 4, 8]}/><meshStandardMaterial color="#537c7a"/></mesh>)}
-      <Html position={[0, 2.1, 0]} center style={{ pointerEvents: 'none' }}><span className="scene-label">Врач в палате</span></Html>
-    </EditorPulse></EditableTarget>}
     </>
   )
 }
@@ -673,7 +657,6 @@ function Room({
   onFocusObject,
   patientState,
   animationClock = DEFAULT_ANIMATION_CLOCK,
-  doctorArrived,
   actionAnchor,
   onActionPosition,
 }: RoomSceneProps) {
@@ -688,7 +671,6 @@ function Room({
       <HospitalRoomModel
         patientState={patientState}
         animationClock={animationClock}
-        doctorArrived={doctorArrived}
         covered={covered}
         firstPerson={firstPerson}
         blanketTransform={blanketTransform}

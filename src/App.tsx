@@ -1,4 +1,4 @@
-import { actionMenu, actionMenuComplete } from './actionMenu'
+import { actionMenu, actionMenuComplete, shouldCloseActionMenu } from './actionMenu'
 import PulseTrace from './PulseTrace'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Activity, X, ArrowLeft, Check } from 'lucide-react'
@@ -8,6 +8,7 @@ import { consciousnessLabels, elapsed, nextObject, patientCue, positionLabels, r
 import { useSimulationStore } from './store'
 import { placeActionPopover, type ScreenPoint } from './actionPopover'
 import SceneEditor from './SceneEditor'
+import DoctorDialog from './DoctorDialog'
 import { useSceneEditor } from './sceneEditorStore'
 import './App.css'
 
@@ -129,6 +130,7 @@ function App() {
   const editorOpen = useSceneEditor(s => s.open)
   const firstPersonCameraHeight = useSceneEditor(s => s.settings.camera.eyeHeight)
   const [heldItem, setHeldItem] = useState('')
+  const closeActions = useCallback(() => setSelectedObject(null), [])
   const lastArchived = useRef('')
   const previousMenu = useRef<{ object: ObjectId | null; attempt: string | undefined; pending: boolean }>({ object: null, attempt: undefined, pending: false })
   useEffect(() => {
@@ -218,8 +220,10 @@ function App() {
     act(id)
     if (actionById(id).target.object === 'bed-controls') setSelectedObject(null)
     const after = useSimulationStore.getState().attempt
-    const progressed = after && previous && (after.completed.length > previous.completed.length || after.events.slice(previous.events.length).some(event => event.kind === 'action'))
-    if (progressed && selectedObject && actionMenuComplete(after, selectedObject)) setSelectedObject(null)
+    if (after && previous && shouldCloseActionMenu(previous, after, selectedObject)) {
+      setSelectedObject(null)
+      setAcknowledgedHint(null)
+    }
     if (after && after.events.length > (previous?.events.length ?? 0) && after.events.at(-1)?.kind === 'action' && ['nitro', 'aspirin', 'adrenaline', 'captopril', 'oxygen', 'blanket', 'stop-infusion'].includes(id)) setHeldItem(actionById(id).title)
   }
   const active = Boolean(attempt && ['active', 'arrest'].includes(attempt.phase))
@@ -236,7 +240,7 @@ function App() {
       actionAnchor={actionAnchor} onActionPosition={positionActionPanel}
       targetAction={!editorOpen && !selectedObject && hintKey !== acknowledgedHint ? hint : null} onAction={selectObject} onFocusObject={handleFocusObject} onPointerLockChange={handlePointerLockChange} onPointerLockError={handlePointerLockError}
       animationClock={{ speed: attempt?.speed ?? 1, paused: editorOpen || (attempt?.paused ?? false), compressions: attempt?.compressions ?? 0, attemptId: attempt?.id ?? 'preview' }}
-      patientState={attempt?.patient} doctorArrived={attempt?.doctorArrived || attempt?.teamArrived}
+      patientState={attempt?.patient}
     /></section>
     {attempt && !editorOpen && <header className="emergency-header">
       <button className="hud-button glass-panel menu-button" onClick={backToMenu}><ArrowLeft size={17}/> Выйти в меню</button>
@@ -244,11 +248,9 @@ function App() {
       {active && <div className="header-actions"><button className="hud-button glass-panel" onClick={() => { unlock(); setSelectedObject(null); setFirstPerson(value => !value) }}>{firstPerson ? 'Обзор палаты' : 'От первого лица'}</button></div>}
     </header>}
     {!attempt && !editorOpen && <section className="scenario-picker glass-panel">
-      <div className="picker-intro"><span className="eyebrow">ПРАКТИКА ПРИНЯТИЯ РЕШЕНИЙ</span><h1>Увидеть. Позвать.<br/>Помочь вовремя.</h1></div>
       <div className="case-grid">{emergencyCases.map((c, index) => <button key={c.id} className={`case-card ${selectedCase === c.id ? 'selected' : ''}`} onClick={() => setSelectedCase(c.id)} aria-pressed={selectedCase === c.id}><span className="case-number">0{index + 1}</span><strong>{c.title}</strong><span>{c.description}</span></button>)}</div>
-      <div className="setup-row"><label>Режим<select value={mode} onChange={e => setMode(e.target.value as typeof mode)}><option value="training">Обучение · подсказки</option><option value="exam">Экзамен · без подсказок</option></select></label>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
-      <div className="picker-bottom"><p>Оцениваются приоритеты и выбор предметов; каждое вмешательство выполняется одним нажатием.</p><button className="primary-button" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}>Начать эпизод <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
-      <a className="asset-credits" href={`${import.meta.env.BASE_URL}models/ATTRIBUTION.txt`} target="_blank" rel="noreferrer">Авторство и лицензии 3D-моделей ↗</a>
+      <div className="setup-row"><div className="mode-picker" role="group" aria-label="Режим">{([{ id: 'training', title: 'Обучение', description: 'С подсказками' }, { id: 'exam', title: 'Экзамен', description: 'Без подсказок' }] as const).map(option => <button key={option.id} className={mode === option.id ? 'selected' : ''} aria-pressed={mode === option.id} onClick={() => setMode(option.id)}><strong>{option.title}</strong><span>{option.description}</span>{mode === option.id && <Check size={17}/>}</button>)}</div>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
+      <div className="picker-bottom"><button className="primary-button start-episode" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}><span>Начать эпизод</span> <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
     </section>}
     {attempt && !editorOpen && <>
       {active && <>
@@ -276,6 +278,7 @@ function App() {
       {!active && <section className="results-panel glass-panel"><span className="eyebrow">РАЗБОР ПОПЫТКИ</span><h1>{attempt.phase === 'finished' ? 'Помощь передана' : 'Эпизод завершён'}</h1><p>{attempt.outcome}</p><div className="result-metrics"><div><strong>{time(attempt.doctorCalledAt)}</strong><span>до вызова врача</span></div><div><strong>{time(attempt.firstCorrectAt)}</strong><span>до первого верного действия</span></div><div><strong>{attempt.errors.filter(e => e.severity === 'critical').length}</strong><span>критических ошибок</span></div></div><div className="stage-scores">{scores.map((score, i) => <div key={i}><span>{i + 1}. {stageTitles[i]}</span><progress max={100} value={score}/><strong>{score}%</strong></div>)}</div><h3>Ошибки и решения</h3>{attempt.errors.length ? <ul className="error-list">{attempt.errors.map((error, i) => <li key={i} className={error.severity}><span>{time(error.at)} · {({ critical: 'Критическая', major: 'Существенная', minor: 'Незначительная' })[error.severity]}</span>{error.why}</li>)}</ul> : <p>Ошибок в выполненных действиях не зарегистрировано.</p>}<div className="result-buttons"><button className="primary-button" onClick={() => begin(attempt.caseId)}>Повторить эпизод</button><button className="secondary-button" onClick={backToMenu}>Выбрать другой</button></div></section>}
     </>}
     {storageError && <p className="storage-error" role="status">{storageError}</p>}
+    {active && !editorOpen && attempt && (attempt.doctorArrived || attempt.teamArrived) && <DoctorDialog key={attempt.id} attempt={attempt} onOpen={closeActions} onHandoff={() => doAction('handoff')}/>}
     {editorOpen && <SceneEditor/>}
 
 

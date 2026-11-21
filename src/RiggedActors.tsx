@@ -14,6 +14,7 @@ import { useBedMotion } from './bedMotionContext'
 import { alignPatientBones, prepareBedContact, restPatientArms, seatPatientOnFloor, seatPatientOnMattress } from './patientBedContact'
 import { targetBedAngles } from './bedKinematics'
 import { installPatientPicking } from './patientPicking'
+import { useSimulationStore } from './store'
 
 const ROOT = import.meta.env.BASE_URL
 const PATIENT_ASSETS = [`${ROOT}models/patient-rigged.glb`, `${ROOT}models/patient-anims.glb`] as const
@@ -61,6 +62,8 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
   const loaded = useRigGLTF(paths)
   const bedMotion = useBedMotion()
   const contactApplied = useRef(false)
+  const covered = useSimulationStore(s => s.attempt?.completed.includes('blanket') ?? false)
+  useEffect(() => { contactApplied.current = false }, [covered])
   const prepared = useMemo(() => {
     const object = cloneSkeleton(loaded[0].scene)
     object.userData.patientRenderer = 'rigged'
@@ -133,7 +136,7 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
       if (!clock.paused || !contactApplied.current) {
         alignPatientBones(prepared.contact, bedMotion.current.angles)
         seatPatientOnMattress(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, patient.position !== 'legsUp' && patient.breathing)
-        restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles)
+        restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, covered ? bedMotion.current.blanket : null)
         contactApplied.current = true
       }
     } else if (patient.location === 'sink' && patient.position !== 'sitting') {

@@ -1,5 +1,6 @@
 import { Bone, Matrix4, Object3D, Quaternion, SkinnedMesh, Vector3 } from 'three'
-import { BED_GEOMETRY, mattressHeight, patientLegTilt, type BedAngles } from './bedKinematics.ts'
+import { BED_GEOMETRY, bedPoint, mattressHeight, patientLegTilt, type BedAngles } from './bedKinematics.ts'
+import { blanketHeight } from './blanketProfile.ts'
 export function prepareBedContact(object: Object3D) {
   const bones = new Map<string, Bone>()
   let mesh: SkinnedMesh | undefined
@@ -14,7 +15,13 @@ export function prepareBedContact(object: Object3D) {
   }
   const coreSamples = mesh ? [...bins.values()].filter(v => Math.abs(mesh!.geometry.getAttribute('position').getX(v.index)) < .18 && mesh!.geometry.getAttribute('position').getY(v.index) < 1.455).map(v => v.index) : []
   const headSamples = mesh ? [...bins.values()].filter(v => mesh!.geometry.getAttribute('position').getY(v.index) > 1.455).map(v => v.index) : []
-  return { bones, mesh, coreSamples, headSamples, samples: [...bins.values()].map(v => v.index), inverse: new Matrix4(), point: new Vector3(), scale: new Vector3() }
+  object.updateMatrixWorld(true)
+  const palmNormals = new Map<string, Vector3>()
+  for (const side of ['Left', 'Right']) {
+    const wrist = bones.get(`${side}Hand`)
+    if (wrist) palmNormals.set(side, new Vector3(0, 0, 1).transformDirection(mesh?.matrixWorld ?? object.matrixWorld).applyQuaternion(wrist.getWorldQuaternion(new Quaternion()).invert()))
+  }
+  return { bones, mesh, coreSamples, headSamples, palmNormals, samples: [...bins.values()].map(v => v.index), inverse: new Matrix4(), point: new Vector3(), scale: new Vector3() }
 }
 /** Bones and mattress consume the same angles, with hips and knees at the same hinges. */
 export function alignPatientBones(calibration: ReturnType<typeof prepareBedContact>, a: BedAngles) {
@@ -83,7 +90,7 @@ export function seatPatientOnMattress(object: Object3D, calibration: ReturnType<
 
 
 /** Two-bone arm IK keeps the hands above the mattress as the backrest rises. */
-export function restPatientArms(object: Object3D, calibration: ReturnType<typeof prepareBedContact>, frame: Object3D, a: BedAngles) {
+export function restPatientArms(object: Object3D, calibration: ReturnType<typeof prepareBedContact>, frame: Object3D, a: BedAngles, blanket?: Object3D | null) {
   const point = new Vector3(), shoulder = new Vector3(), elbow = new Vector3(), hand = new Vector3(), target = new Vector3(), bend = new Vector3(), direction = new Vector3()
   for (const [side, sign] of [['Left', 1], ['Right', -1]] as const) {
     const upper = calibration.bones.get(`${side}Arm`), lower = calibration.bones.get(`${side}ForeArm`), wrist = calibration.bones.get(`${side}Hand`)
@@ -91,7 +98,16 @@ export function restPatientArms(object: Object3D, calibration: ReturnType<typeof
     upper.getWorldPosition(shoulder); lower.getWorldPosition(elbow); wrist.getWorldPosition(hand)
     const l1 = shoulder.distanceTo(elbow), l2 = elbow.distanceTo(hand)
     const surface = mattressHeight(.28, a) ?? 0
-    target.set(sign * .49, surface + .14, .28); frame.localToWorld(target)
+    target.set(sign * .49, surface + .14, .28)
+    if (blanket) {
+      // Fit the wrist to the very same fabric profile, including user calibration.
+      frame.localToWorld(target); blanket.worldToLocal(target)
+      target.y = blanketHeight(target.x, target.z)
+      blanket.localToWorld(target); frame.worldToLocal(target)
+      const [y, z] = bedPoint(target.y, target.z, a)
+      target.setY(y + .085).setZ(z)
+    }
+    frame.localToWorld(target)
     direction.copy(target).sub(shoulder)
     const distance = Math.min(direction.length(), (l1 + l2) * .985); direction.normalize()
     const along = (l1 * l1 - l2 * l2 + distance * distance) / (2 * distance)
@@ -108,6 +124,18 @@ export function restPatientArms(object: Object3D, calibration: ReturnType<typeof
       wrist.getWorldPosition(hand)
       target.set(0, Math.sin(a.thigh), Math.cos(a.thigh)).transformDirection(frame.matrixWorld).multiplyScalar(.2).add(hand)
       aim(wrist, fingers, target); object.updateMatrixWorld(true)
+      if (blanket) {
+        // Roll the palm onto the fabric rather than leaving the hand on its edge.
+        const axis = fingers.getWorldPosition(new Vector3()).sub(hand).normalize()
+        const normal = calibration.palmNormals.get(side)!.clone().applyQuaternion(wrist.getWorldQuaternion(new Quaternion()))
+        const desired = new Vector3(0, Math.cos(a.thigh), -Math.sin(a.thigh)).transformDirection(frame.matrixWorld)
+        normal.addScaledVector(axis, -normal.dot(axis)).normalize()
+        desired.addScaledVector(axis, -desired.dot(axis)).normalize()
+        const angle = Math.atan2(axis.dot(normal.clone().cross(desired)), normal.dot(desired))
+        const world = wrist.getWorldQuaternion(new Quaternion()).premultiply(new Quaternion().setFromAxisAngle(axis, angle))
+        wrist.quaternion.copy(wrist.parent!.getWorldQuaternion(new Quaternion()).invert().multiply(world))
+        object.updateMatrixWorld(true)
+      }
     }
   }
 }

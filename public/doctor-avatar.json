@@ -1,0 +1,5 @@
+{
+  "asset": "doctor-avatar.jpg",
+  "generation": "Built-in image_gen",
+  "prompt": "Use case: stylized-concept\nAsset type: doctor avatar for a clinical training simulator dialogue.\nPrimary request: A friendly professional adult male physician in a white coat, slightly cartoon-like polished digital illustration with soft dimensional shading and natural adult proportions. Calm attentive expression, looking toward viewer.\nComposition: square portrait, head and upper torso centered with comfortable padding, suitable for a small circular crop.\nScene: simple pale mint-green background, soft even light.\nConstraints: one person only; no text, badges, logos, watermark or medical props; clean clear silhouette."
+}

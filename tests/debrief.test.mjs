@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { actualSteps, formatDuration, passageTime, referenceSteps } from '../src/debrief.ts'
+import { actualSteps, formatDuration, passageTime, referenceSteps, referenceDiagram } from '../src/debrief.ts'
 import { createAttempt, performAction, requiredActions, tickAttempt } from '../src/simulation.ts'
 import { emergencyCases } from '../src/scenario.ts'
 const act = (a, ...ids) => ids.reduce((s, id) => performAction(s, id), a)
@@ -91,4 +91,52 @@ test('later episode branches retain earlier history and load the case nitrate th
   assert.ok(!plans[0].tiers.flat().some(step => step.id === 'handoff'))
   assert.ok(plans[1].tiers.flat().some(step => step.id === 'handoff'))
   assert.equal(a.actionHistory[0].episode, 'hypertension')
+})
+
+for (const c of emergencyCases) test(`${c.id}: ideal completion has one reference block per actual intervention and no wait for the doctor`, () => {
+  let a = createAttempt(c.id, c.id === 'syncope' ? { variant: 'brief' } : {})
+  for (let i = 0; i < 80; i++) {
+    const next = requiredActions(a).find(id => !a.completed.includes(id))
+    if (!next || next === 'handoff') break
+    if (next === 'observe-recovery') a = tickAttempt(a, 25)
+    a = performAction(a, next)
+  }
+  assert.ok(a.completed.includes('record'), a.feedback)
+  assert.ok(a.patient.secondsSinceOnset < 90)
+  assert.equal(a.doctorArrived, true, 'doctor arrives immediately after the final required action')
+  a = performAction(a, 'handoff')
+  assert.equal(a.phase, 'finished', a.feedback)
+  assert.equal(a.errors.length, 0, JSON.stringify(a.errors))
+  const expected = referenceDiagram(a).flatMap(plan => plan.steps)
+  assert.equal(expected.length, actualSteps(a).length)
+  assert.ok(expected.every(step => step.status === 'done'))
+  assert.deepEqual(expected.map(step => step.id), actualSteps(a).map(step => step.action))
+})
+
+test('one call to the team fulfills two requirements but produces one reference block', () => {
+  const a = act(createAttempt('chest-pain'), 'call-team', 'inspect')
+  const steps = referenceDiagram(a).flatMap(plan => plan.steps)
+  assert.equal(steps.filter(step => ['call-team', 'call-doctor'].includes(step.id)).length, 1)
+  assert.equal(steps.find(step => step.id === 'call-team').covered.length, 2)
+})
+
+test('an inherited completed action is not duplicated when the clinical episode changes', () => {
+  let a = act(createAttempt('hypertension'), 'call-doctor', 'inspect')
+  a = tickAttempt(a, 75)
+  const steps = referenceDiagram(a).flatMap(plan => plan.steps)
+  assert.equal(steps.filter(step => step.id === 'call-doctor').length, 1)
+  assert.equal(steps.filter(step => step.id === 'inspect').length, 1)
+})
+
+test('calling and incomplete treatment do not trigger immediate doctor arrival', () => {
+  const a = act(createAttempt('abdomen'), 'call-doctor', 'inspect', 'knees-up', 'measure')
+  assert.equal(a.doctorArrived, false)
+})
+
+test('missing actions are red status candidates and performed priority violations are late', () => {
+  const a = act(createAttempt('abdomen'), 'call-doctor', 'inspect', 'measure')
+  const steps = referenceDiagram(a).flatMap(plan => plan.steps)
+  assert.equal(steps.find(step => step.id === 'measure').status, 'late')
+  assert.equal(steps.find(step => step.id === 'knees-up').status, 'missing')
+  assert.equal(steps.find(step => step.id === 'inspect').status, 'done')
 })

@@ -146,7 +146,16 @@ export function currentStage(a: Attempt): Stage {
 }
 export function nextObject(a: Attempt): ObjectId | null {
   const missing = requiredActions(a).find(id => !a.completed.includes(id))
-  return missing ? actionById(missing).target.object : null
+  return missing && missing !== 'handoff' ? actionById(missing).target.object : null
+}
+function arriveWhenReady(a: Attempt): Attempt {
+  if (a.phase !== 'active' || a.doctorCalledAt === null || !a.completed.includes('record') || requiredActions(a).some(id => id !== 'handoff' && !a.completed.includes(id))) return a
+  if (!a.doctorArrived) {
+    a.doctorArrived = true
+    log(a, 'Необходимая помощь выполнена. Врач в палате, передайте пациентку и данные наблюдения.')
+  }
+  if (a.teamCalledAt !== null) a.teamArrived = true
+  return a
 }
 export function patientCue(a: Attempt): string {
   if (!a.patient.breathing) return 'Пациентка не реагирует. Нормальное дыхание отсутствует.'
@@ -186,7 +195,7 @@ function transitionToChest(a: Attempt) {
 }
 export function tickAttempt(previous: Attempt, deltaSec: number): Attempt {
   const after = advanceAttempt(previous, deltaSec)
-  return after === previous ? previous : captureCarePlan(after)
+  return after === previous ? previous : arriveWhenReady(captureCarePlan(after))
 }
 function advanceAttempt(previous: Attempt, deltaSec: number): Attempt {
   if (previous.paused || !['active', 'arrest'].includes(previous.phase) || !Number.isFinite(deltaSec) || deltaSec <= 0) return previous
@@ -259,7 +268,7 @@ export function performAction(previous: Attempt, action: ActionId, realNowMs = p
   const performed = after.events.slice(previous.events.length).some(event => event.kind === 'action') || after.compressions > previous.compressions || after.ventilations > previous.ventilations || (!previous.completed.includes(action) && after.completed.includes(action))
   const issues = after.errors.filter((issue, index) => index >= previous.errors.length || (issue.action === action && after.feedback.includes(issue.why))).map(({ severity, why }) => ({ severity, why }))
   after.actionHistory.push({ at: elapsed(previous), action, episode: previous.episode, performed, fulfilled: after.completed.filter(id => !previous.completed.includes(id)), feedback: after.feedback, issues })
-  return captureCarePlan(after)
+  return arriveWhenReady(captureCarePlan(after))
 }
 function applyAction(previous: Attempt, action: ActionId, realNowMs: number): Attempt {
   if (!['active', 'arrest'].includes(previous.phase) || previous.paused) return previous
@@ -282,7 +291,7 @@ function applyAction(previous: Attempt, action: ActionId, realNowMs: number): At
         complete(a, 'call-doctor')
       }
     }
-    complete(a, action); a.feedback = action === 'call-doctor' ? 'Вызов принят. Врач прибудет через 90 секунд. Продолжайте помощь.' : 'Вызов принят. Бригада прибудет через 45 секунд.'
+    complete(a, action); a.feedback = action === 'call-doctor' ? 'Вызов принят. Продолжайте помощь; когда необходимые действия будут выполнены, врач сразу примет пациентку.' : 'Вызов принят. Продолжайте помощь до передачи пациентки бригаде.'
     log(a, a.feedback, 'action'); return a
   }
   if (a.phase === 'arrest') {

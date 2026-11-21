@@ -32,7 +32,7 @@ try {
   })
   const send = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++nextId
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Timeout: ${method}`)) }, 15000)
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Timeout: ${method}`)) }, method === 'Page.captureScreenshot' ? 45000 : 20000)
     pending.set(id, { resolve, reject, timer }); ws.send(JSON.stringify({ id, method, params }))
   })
   const evaluate = async expression => {
@@ -61,9 +61,12 @@ try {
     assert.equal(await evaluate('document.querySelectorAll(".setup-row input, .setup-row select").length'), 0, 'Prescription has no student input')
   }
   await run(async () => {
-    window.__sim = (await import('/src/store.ts')).useSimulationStore
+    const app = await (await fetch('/src/App.tsx')).text()
+    window.__sim = (await import(app.match(/from ["']([^"']*\/store\.ts[^"']*)["']/)[1])).useSimulationStore
     window.__logic = await import('/src/simulation.ts')
     window.__editor = (await import('/src/sceneEditorStore.ts')).useSceneEditor
+    window.__advance = window.__sim.getState().tick
+    window.__sim.setState({tick:()=>{}})
     const source = await (await fetch('/src/RoomScene.tsx')).text()
     const spec = source.match(/from ["']([^"']*react-three_fiber[^"']*)["']/)[1]
     window.__fiber = await import(spec)
@@ -92,12 +95,12 @@ try {
         const a=store.getState().attempt, next=logic.requiredActions(a).find(id=>!a.completed.includes(id))
         if (next==='repeat-measure') break
         if (!next) throw new Error('No next step')
-        if (next==='observe-recovery') store.getState().tick(25)
+        if (next==='observe-recovery') window.__advance(25)
         store.getState().act(next)
       }
       const a=store.getState().attempt
       if(a.stableAt===null)throw new Error('Not stable: '+a.feedback)
-      store.getState().tick(91)
+      if(mistakes) window.__advance(91)
     }
   })
   await click('.case-card', 'Острая боль в животе')
@@ -120,6 +123,8 @@ try {
   assert.ok(await evaluate('document.querySelectorAll(".actual-lane .correct").length > 5'))
   assert.ok(await evaluate('document.querySelectorAll(".diagram-arrow").length > 10'))
   assert.ok(await evaluate('!document.querySelector(".results-panel").textContent.includes("%")'))
+  assert.ok(await evaluate('!document.querySelector(".results-panel").textContent.includes("Один приоритет") && !document.querySelector(".results-panel").textContent.includes("Есть в истории")'))
+  assert.ok(await evaluate('document.querySelector(".reference-check.late")?.textContent.includes("С опозданием")'))
   await shot('debrief-comparison-desktop')
   const stableTime = await evaluate('document.querySelector(".passage-time strong").textContent')
   await run(() => window.__sim.getState().tick(120))
@@ -142,10 +147,15 @@ try {
     await run(id => window.__prepare(id), id)
     await run(() => {window.__sim.getState().act('repeat-measure');window.__sim.getState().act('record')})
     await wait('document.querySelector(".doctor-dialog")?.open && !document.querySelector(".doctor-dialog .primary-button").disabled', id+': handoff')
+    assert.ok(await evaluate('window.__sim.getState().attempt.patient.secondsSinceOnset<90'),id+': no wait for doctor')
+    assert.equal(await evaluate('window.__logic.nextObject(window.__sim.getState().attempt)'),null,id+': help button does not pulse after completion')
     await click('.doctor-dialog .primary-button','Передать пациента врачу')
     await wait('document.querySelector(".timeline-comparison") !== null', id+': diagrams')
     assert.equal(await evaluate('document.querySelectorAll(".reference-check.missing").length'),0,id+': all reference steps accounted for')
     assert.equal(await evaluate('window.__sim.getState().attempt.errors.length'),0,id+': error-free reference')
+    const counts=await evaluate('[document.querySelectorAll(".actual-lane .diagram-node").length,document.querySelectorAll(".reference-lane .diagram-node").length]')
+    assert.equal(counts[0],counts[1],id+': ideal diagrams have equal block counts')
+    if(id==='abdomen')await shot('debrief-ideal-matching-steps')
     await click('button','Выбрать другой')
   }
   assert.equal(exceptions.length,0,JSON.stringify(exceptions))

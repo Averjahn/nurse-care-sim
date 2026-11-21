@@ -33,8 +33,12 @@
 .diagram-node.critical .diagram-arrow { color: #cc7d80; }
 .reference-actions { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .reference-actions > li + li { border-top: 1px solid #cae6d2; padding-top: 12px; }
-.reference-check { display: flex; align-items: center; gap: 4px; margin-top: 5px; font-size: 9px; }
-.reference-check.missing { color: #6b776c; font-style: italic; }
+.reference-check, .step-status { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; padding: 6px 9px; background: #fff; border: 1px solid; border-radius: 7px; font-size: 10px; font-weight: 600; line-height: 1.4; }
+.reference-check svg { flex-shrink: 0; }
+.reference-check.done, .correct .step-status { color: #087b48; border-color: #7ccba6; box-shadow: inset 3px 0 #14a367; }
+.reference-check.missing, .critical .step-status { color: #b52a37; border-color: #eca1a9; box-shadow: inset 3px 0 #dc4658; }
+.reference-check.late, .warning .step-status { color: #8b6200; border-color: #e4c253; box-shadow: inset 3px 0 #e8b81c; }
+.priority-label { color: #416b55; font-weight: 600; }
 .branch-marker { border: 1px dashed #a4c8b0; border-radius: 8px; padding: 10px; font-size: 12px; font-weight: 600; color: #486c53; background: #f5faf6; }
 .branch-marker small { display: block; font-size: 10px; font-weight: 400; margin-top: 4px; line-height: 1.5; }
 .empty-timeline { color: #677b6d; font-size: 12px; }

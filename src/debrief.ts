@@ -41,4 +41,27 @@ export function referenceSteps(a: Attempt) {
     tiers: plan.tiers.map(tier => tier.filter(id => index === a.carePlans.length - 1 || !['repeat-measure', 'record', 'handoff'].includes(id))).filter(tier => tier.length).map(tier => tier.map(id => ({ id, title: actionById(id).title, done: fulfilled.has(id) }))),
   }))
 }
+/** One reference node per intervention, including requirements fulfilled by the same click. */
+export function referenceDiagram(a: Attempt) {
+  const usedEntries = new Set<number>()
+  return referenceSteps(a).map(plan => ({
+    ...plan,
+    steps: plan.tiers.flatMap((tier, tierIndex) => {
+      const groups = new Map<number | ActionId, { id: ActionId; title: string; covered: string[]; status: 'done' | 'missing' | 'late'; priority: boolean; order: number }>()
+      for (const step of tier) {
+        const entryIndex = a.actionHistory.findIndex(entry => entry.performed && (entry.action === step.id || entry.fulfilled.includes(step.id)))
+        const entry = a.actionHistory[entryIndex]
+        if (entry && usedEntries.has(entryIndex)) continue
+        const key = entry ? entryIndex : step.id
+        const group = groups.get(key)
+        if (group) { group.covered.push(step.title); continue }
+        const id = entry && tier.some(item => item.id === entry.action) ? entry.action : step.id
+        const late = entry && (entry.issues.length > 0 || a.errors.some(issue => issue.action === step.id && issue.at <= entry.at && /срок|секунд|минут/.test(issue.why)))
+        groups.set(key, { id, title: actionById(id).title, covered: [step.title], status: !entry ? 'missing' : late ? 'late' : 'done', priority: tierIndex === 0, order: entry ? entryIndex : Infinity })
+      }
+      for (const key of groups.keys()) if (typeof key === 'number') usedEntries.add(key)
+      return [...groups.values()].sort((x, y) => x.order - y.order)
+    }),
+  }))
+}
 export const passageTime = (a: Attempt) => formatDuration(elapsed(a))

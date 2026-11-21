@@ -14,7 +14,6 @@ import { useBedMotion } from './bedMotionContext'
 import { alignPatientBones, prepareBedContact, restPatientArms, seatPatientOnFloor, seatPatientOnMattress } from './patientBedContact'
 import { targetBedAngles } from './bedKinematics'
 import { installPatientPicking } from './patientPicking'
-import { useSimulationStore } from './store'
 
 const ROOT = import.meta.env.BASE_URL
 const PATIENT_ASSETS = [`${ROOT}models/patient-rigged.glb`, `${ROOT}models/patient-anims.glb`] as const
@@ -61,9 +60,6 @@ export function AnimatedPatient({ patient, clock, fallback }: { patient: Patient
 function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock: AnimationClock; paths: string[] }) {
   const loaded = useRigGLTF(paths)
   const bedMotion = useBedMotion()
-  const contactApplied = useRef(false)
-  const covered = useSimulationStore(s => s.attempt?.completed.includes('blanket') ?? false)
-  useEffect(() => { contactApplied.current = false }, [covered])
   const prepared = useMemo(() => {
     const object = cloneSkeleton(loaded[0].scene)
     object.userData.patientRenderer = 'rigged'
@@ -133,16 +129,20 @@ function RiggedPatient({ patient, clock, paths }: { patient: PatientState; clock
     applyRigMorphs(prepared.morphMeshes, targets, prepared.compression[0], compressing)
     applyRigSkin(prepared.skin, patient.skin)
     if (bedMotion?.current.frame && patient.location !== 'sink' && patient.position !== 'sitting') {
-      if (!clock.paused || !contactApplied.current) {
-        alignPatientBones(prepared.contact, bedMotion.current.angles)
-        seatPatientOnMattress(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, patient.position !== 'legsUp' && patient.breathing)
-        restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, covered ? bedMotion.current.blanket : null)
-        contactApplied.current = true
-      }
+      // The mixer also writes bone tracks on a paused frame. Reapply contact and
+      // arm constraints afterwards so the rest pose cannot leak through the cloth.
+      alignPatientBones(prepared.contact, bedMotion.current.angles)
+      seatPatientOnMattress(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles, patient.position !== 'legsUp' && patient.breathing)
+      restPatientArms(prepared.object, prepared.contact, bedMotion.current.frame, bedMotion.current.angles)
     } else if (patient.location === 'sink' && patient.position !== 'sitting') {
       alignPatientBones(prepared.contact, targetBedAngles(patient.position))
       seatPatientOnFloor(prepared.object, prepared.contact)
     } else prepared.object.position.setY(0)
+    if (bedMotion) {
+      // oxlint-disable-next-line react/immutability
+      bedMotion.current.patientReady = true
+      bedMotion.current.fitBlanket?.(prepared.contact.mesh, prepared.contact.blanketSamples)
+    }
   })
   return <><primitive object={prepared.object} dispose={null}/><PatientAccessories object={prepared.object}/></>
 }

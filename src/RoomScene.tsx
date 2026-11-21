@@ -5,7 +5,6 @@ import * as THREE from 'three'
 import { objectInCase, objectLabels, type ObjectId } from './scenario'
 import { useSimulationStore } from './store'
 import { basePatient, type PatientState } from './simulation'
-import { HINT_COLOR } from './interactionHighlight'
 import { AnimatedPatient } from './RiggedActors'
 import { EditableTarget, EditorPulse, SceneEditorControls } from './SceneEditor3D'
 import { splitRoomObjects } from './importedRoomObjects'
@@ -17,9 +16,9 @@ import { WALL_STORAGE_POSITIONS } from './wardStorage'
 import { BedMotionProvider } from './BedMotion'
 import { useBedMotion } from './bedMotionContext'
 import RestoredBed from './RestoredBed'
-import { BED_ORIGIN, PATIENT_BED_POSITION, bedPoint } from './bedKinematics'
+import { BED_ORIGIN, PATIENT_BED_POSITION } from './bedKinematics'
 import HospitalWindow from './HospitalWindow'
-import { BLANKET, blanketHeight } from './blanketProfile'
+import PatientBlanket from './PatientBlanket'
 import { subtractOpening, windowLayout } from './windowGeometry'
 import { DEFAULT_ANIMATION_CLOCK, patientPose, type AnimationClock } from './patientAnimation'
 
@@ -62,7 +61,6 @@ const PATIENT_MODEL_URL = `${import.meta.env.BASE_URL}models/patient.glb?v=2`
 const PATIENT_REAL_WORLD_SCALE = 1
 const STORAGE_SHELF_X = 2.902
 const FIRST_PERSON_EYE_HEIGHT = 3.4
-const ACTION_HIGHLIGHT_COLOR = HINT_COLOR
 // Stable options prevent Fiber from recreating the camera on every timer tick.
 // Saved view changes are applied imperatively by SceneEditorControls.
 const INITIAL_CAMERA = { position: [5.4, 6.4, 3.8] as [number, number, number], fov: 36 }
@@ -305,115 +303,6 @@ function PatientVisual() {
     : <FallbackPatientModel />
 }
 
-function BlanketVisual({ highlighted = false }: { highlighted?: boolean }) {
-  const motion = useBedMotion()
-  const root = useRef<THREE.Group>(null)
-  const previous = useRef('')
-  const { surface, hem, restSurface, restHem } = useMemo(() => {
-    const columns = 36
-    const rows = 72
-    const { width, length, startZ } = BLANKET
-    const surface = new THREE.BufferGeometry()
-    const positions: number[] = []
-    const indices: number[] = []
-    const heightAt = (x: number, along: number) => blanketHeight(x, startZ + along * length)
-
-    for (let row = 0; row <= rows; row += 1) {
-      const along = row / rows
-      const z = startZ + along * length
-
-      for (let column = 0; column <= columns; column += 1) {
-        const x = (column / columns * 2 - 1) * width / 2
-        positions.push(x, heightAt(x, along), z)
-      }
-    }
-
-    const stride = columns + 1
-    for (let row = 0; row < rows; row += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const a = row * stride + column
-        const b = a + 1
-        const c = a + stride
-        const d = c + 1
-        indices.push(a, c, b, b, c, d)
-      }
-    }
-
-    surface.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    surface.setIndex(indices)
-    surface.computeVertexNormals()
-
-    const edgeX = width / 2 - 0.015
-    const hemPoints = Array.from({ length: 49 }, (_, index) => {
-      const along = index / 48
-      return new THREE.Vector3(-edgeX, heightAt(-edgeX, along), startZ + along * length)
-    })
-    hemPoints.push(
-      new THREE.Vector3(0, heightAt(0, 1), startZ + length),
-      ...Array.from({ length: 49 }, (_, index) => {
-        const along = 1 - index / 48
-        return new THREE.Vector3(edgeX, heightAt(edgeX, along), startZ + along * length)
-      }),
-    )
-    const hem = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(hemPoints), 144, 0.012, 6, false)
-
-    return { surface, hem, restSurface: new Float32Array(surface.getAttribute('position').array), restHem: new Float32Array(hem.getAttribute('position').array) }
-  }, [])
-
-  useFrame(() => {
-    const group = root.current, frame = motion?.current.frame
-    if (!group || !frame) return
-    // The context holds the shared mutable animation frame, like its bed angles.
-    // oxlint-disable-next-line react/immutability
-    motion!.current.blanket = group
-    let ancestor: THREE.Object3D | null = group
-    while (ancestor) { if (!ancestor.visible) return; ancestor = ancestor.parent }
-    group.updateWorldMatrix(true, false); frame.updateWorldMatrix(true, false)
-    const matrix = new THREE.Matrix4().copy(frame.matrixWorld).invert().multiply(group.matrixWorld), inverse = matrix.clone().invert()
-    const a = motion!.current.angles, key = `${a.head},${a.thigh},${a.shin}:${matrix.elements.join(',')}`
-    if (key === previous.current) return
-    previous.current = key
-    const point = new THREE.Vector3()
-    for (const [geometry, rest] of [[surface, restSurface], [hem, restHem]] as const) {
-      const p = geometry.getAttribute('position')
-      for (let i = 0; i < p.count; i++) {
-        point.fromArray(rest, i * 3).applyMatrix4(matrix)
-        const [y, z] = bedPoint(point.y, point.z, a)
-        point.setY(y).setZ(z).applyMatrix4(inverse); p.setXYZ(i, point.x, point.y, point.z)
-      }
-      p.needsUpdate = true; geometry.computeVertexNormals(); geometry.computeBoundingSphere()
-    }
-
-  })
-
-  useEffect(() => () => {
-    surface.dispose()
-    hem.dispose()
-  }, [hem, surface])
-
-  return (
-    <group ref={root} name="patient-blanket">
-      <mesh geometry={surface} castShadow receiveShadow>
-        <meshStandardMaterial
-          color={highlighted ? ACTION_HIGHLIGHT_COLOR : '#b9d1d5'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.3 : 0}
-          roughness={0.82}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      <mesh geometry={hem} castShadow>
-        <meshStandardMaterial
-          color={highlighted ? ACTION_HIGHLIGHT_COLOR : '#e2ece9'}
-          emissive={highlighted ? ACTION_HIGHLIGHT_COLOR : '#000000'}
-          emissiveIntensity={highlighted ? 0.3 : 0}
-          roughness={0.88}
-        />
-      </mesh>
-
-    </group>
-  )
-}
 
 type HospitalRoomModelProps = Omit<
   RoomSceneProps,
@@ -515,7 +404,7 @@ function HospitalRoomAsset({
   const editingBlanket = useSceneEditor(s => s.selected === 'blanket-on-patient')
   const cprSupport = useSimulationStore(s => !!s.attempt?.completed.includes('firm-surface'))
   const patientScale = patientTransform.scale * PATIENT_REAL_WORLD_SCALE
-  const blanketOff = patientState && ['sitting_edge', 'collapsed', 'arrest'].includes(patientPose(patientState))
+  const blanketOff = patientState && patientPose(patientState) === 'sitting_edge'
   const { model, scale, offset, floorBounds, wallBounds, importedObjects } = useMemo(() => {
     const model = scene.clone(true)
     model.updateMatrixWorld(true)
@@ -609,7 +498,7 @@ function HospitalRoomAsset({
           position={[blanketTransform.x, blanketTransform.y, blanketTransform.z + (blanketOff ? 0.9 : 0)]}
           scale={patientScale * blanketTransform.scale}
         >
-          <EditorPulse id="blanket-on-patient"><group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><BlanketVisual highlighted={false} /></group></EditorPulse>
+          <SceneInteraction id={patientState?.breathing === false ? 'cpr' : 'patient'} alias="interaction-covered-patient" highlighted={targetAction === 'patient' || targetAction === 'cpr'} onAction={onAction}><group scale={blanketOff ? [1, 0.8, 0.28] : [1, 1, 1]}><PatientBlanket folded={Boolean(blanketOff)} lowerOnly={patientState?.breathing === false}/></group></SceneInteraction>
         </EditableTarget>
     </group>
 
@@ -845,8 +734,8 @@ function BedsideInteractions({ targetAction, onAction }: Pick<RoomSceneProps, 't
 }
 /** Pulse the actual mesh materials, never a proxy box. All materials here
  * belong to the mounted scene instance (patient materials are cloned on load). */
-function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
-  id: ObjectId; highlighted: boolean; growth?: number; onAction: RoomSceneProps['onAction']; children: ReactNode
+function SceneInteraction({ id, alias, highlighted, growth = 0, onAction, children }: {
+  id: ObjectId; alias?: string; highlighted: boolean; growth?: number; onAction: RoomSceneProps['onAction']; children: ReactNode
 }) {
   const ref = useRef<THREE.Group>(null)
   const [hovered, setHovered] = useState(false)
@@ -858,7 +747,7 @@ function SceneInteraction({ id, highlighted, growth = 0, onAction, children }: {
   const color = settings?.hintColor ?? defaultColor
   const maxScale = settings?.hintScale ?? 1 + growth
   useObjectHighlight(ref, editor ? preview : highlighted, hovered, id === 'patient' || id === 'cpr' ? 0 : maxScale - 1, color)
-  const content = <group ref={ref} name={`interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
+  const content = <group ref={ref} name={alias ?? `interaction-${id}`} userData={{ emergencyObject: id, hinted: highlighted }}
     onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); if (useSceneEditor.getState().open) { selectEditorSceneObject(editorId); return }; if (document.pointerLockElement) return; event.nativeEvent.preventDefault(); onAction(id, event.point.toArray(), { x: event.nativeEvent.clientX, y: event.nativeEvent.clientY }) }}
     onPointerOver={event => { event.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer' }}
     onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto' }}>

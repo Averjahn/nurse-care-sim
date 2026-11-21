@@ -1,8 +1,8 @@
 import type { ObjectSettings, SceneSettings } from './sceneSettings.ts'
 
 export const DEFAULT_HINT_COLOR = '#FFD500'
-export const SCENE_PRESET_REVISION = 2
-export const CAMERA_PRESET: SceneSettings['camera'] = { position: [5.02, 6.37, 3.8], target: [1.09, 2.12, -2.1], fov: 36, eyeHeight: 3.4 }
+export const SCENE_PRESET_REVISION = 3
+export const CAMERA_PRESET: SceneSettings['camera'] = { position: [4.54, 6.12, 4.54], target: [.85, 2.12, -2.1], fov: 36, eyeHeight: 3.4 }
 export const COLLAPSE_LAYOUT: Record<string, ObjectSettings> = {
   'call-bell': { position: [0.8797297328762567, 1.2138771338025447, -2.0341672444288825] },
   oxygen: { position: [1.2257576631881326, 0.654, -3.5592940517211016] },
@@ -35,7 +35,7 @@ export function applyScenePreset(settings: SceneSettings) {
     for (const [id, patch] of Object.entries(COLLAPSE_LAYOUT)) collapse[id] = { ...collapse[id], ...structuredClone(patch) }
     settings.layouts = { ...settings.layouts, collapse }
   }
-  if (revision < 2) settings.camera = structuredClone(CAMERA_PRESET)
+  if (revision < 3) settings.camera = structuredClone(CAMERA_PRESET)
   settings.presetRevision = SCENE_PRESET_REVISION
   return settings
 }

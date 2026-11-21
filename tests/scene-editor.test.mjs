@@ -13,7 +13,7 @@ test('scene configuration round-trips and protects patient pulse scale', () => {
   assert.deepEqual(parsed.objects.patient.position, input.objects.patient.position)
   assert.equal(parsed.objects.patient.scale, 1.2)
   parsed.camera.position[0] = 3
-  assert.equal(DEFAULT_SCENE_SETTINGS.camera.position[0], 5.02, 'Defaults must remain immutable')
+  assert.equal(DEFAULT_SCENE_SETTINGS.camera.position[0], 4.54, 'Defaults must remain immutable')
 })
 
 test('case layouts persist independently with undo and reset', () => {

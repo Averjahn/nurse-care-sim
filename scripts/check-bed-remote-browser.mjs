@@ -137,7 +137,7 @@ try {
   const commits=await run(()=>window.__commits)
   assert.equal(commits.length,1)
   assert.equal(commits[0].phase,'idle')
-  for(let i=0;i<3;i++)assert.ok(Math.abs(commits[0].camera[i]-[5.02,6.37,3.8][i])<.01,'Camera reaches observation pose before treatment')
+  for(let i=0;i<3;i++)assert.ok(Math.abs(commits[0].camera[i]-[4.54,6.12,4.54][i])<.01,'Camera reaches observation pose before treatment')
   await wait('Math.abs(window.__three.getState().scene.getObjectByName("restored-original-bed").userData.bedAngles.thigh-.65)<.001','bed moves afterwards')
   await shot('bed-remote-observation')
   assert.equal(await evaluate('document.querySelector(".action-panel")'),null)

@@ -25,19 +25,19 @@ test('preset clears individual colors across cases while preserving unrelated tr
   assert.deepEqual(settings.layouts.abdomen.bed.position, [1, 2, 3])
   assert.deepEqual(settings.objects.patient.position, [0, 1, -2])
 })
-test('camera release upgrades revision 1 without resetting edited objects, colors or layouts, once', () => {
+test('camera release upgrades revision 2 without resetting edited objects, colors or layouts, once', () => {
   const previous = globalThis.localStorage
   const saved = structuredClone(DEFAULT_SCENE_SETTINGS)
-  saved.presetRevision = 1
-  saved.camera = { position: [5.4, 6.4, 3.8], target: [.15, 1.3, -2.1], fov: 36, eyeHeight: 3.4 }
+  saved.presetRevision = 2
+  saved.camera = { position: [5.02, 6.37, 3.8], target: [1.09, 2.12, -2.1], fov: 36, eyeHeight: 3.4 }
   saved.objects.patient = { position: [1, 2, 3], hintColor: '#123456' }
   saved.layouts.collapse.monitor = { position: [2, 3, 4] }
   const values = new Map([[SCENE_SETTINGS_KEY, JSON.stringify(saved)]])
   globalThis.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) }
   try {
     const upgraded = readSceneSettings()
-    assert.deepEqual(upgraded.camera.position, [5.02, 6.37, 3.8])
-    assert.deepEqual(upgraded.camera.target, [1.09, 2.12, -2.1])
+    assert.deepEqual(upgraded.camera.position, [4.54, 6.12, 4.54])
+    assert.deepEqual(upgraded.camera.target, [.85, 2.12, -2.1])
     assert.deepEqual(upgraded.objects, saved.objects)
     assert.deepEqual(upgraded.layouts, saved.layouts)
     upgraded.camera.position = [4, 5, 6]

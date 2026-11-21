@@ -73,12 +73,12 @@ try {
     const state = [...window.__fiber._roots.values()][0].store.getState()
     return { position: state.camera.position.toArray(), target: state.controls.target.toArray(), settings: window.__editor.getState().settings }
   })
-  assert.deepEqual(camera.settings.camera.position, [5.02,6.37,3.8])
-  assert.deepEqual(camera.settings.camera.target, [1.09,2.12,-2.1])
+  assert.deepEqual(camera.settings.camera.position, [4.54,6.12,4.54])
+  assert.deepEqual(camera.settings.camera.target, [.85,2.12,-2.1])
   assert.equal(camera.settings.objects.monitor.hintScale, 1.3)
   for (let i=0;i<3;i++) {
-    assert.ok(Math.abs(camera.position[i]-[5.02,6.37,3.8][i])<.01)
-    assert.ok(Math.abs(camera.target[i]-[1.09,2.12,-2.1][i])<.01)
+    assert.ok(Math.abs(camera.position[i]-[4.54,6.12,4.54][i])<.01)
+    assert.ok(Math.abs(camera.target[i]-[.85,2.12,-2.1][i])<.01)
   }
   await shot('debrief-new-camera')
   await run(() => {

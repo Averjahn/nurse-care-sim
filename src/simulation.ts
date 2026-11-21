@@ -25,7 +25,19 @@ export interface PatientState {
 export interface Measurement { at: number; sbp: number; pulse: number }
 export interface Mistake { action: ActionId; severity: Severity; why: string; at: number; stage: Stage }
 export interface Event { at: number; text: string; kind: 'action' | 'patient' | 'system' | 'error' }
+export interface ActionHistoryEntry {
+  at: number
+  action: ActionId
+  episode: CaseId
+  performed: boolean
+  fulfilled: ActionId[]
+  feedback: string
+  issues: Pick<Mistake, 'severity' | 'why'>[]
+}
+export interface CarePlan { at: number; episode: CaseId; resuscitation: boolean; tiers: ActionId[][] }
 export interface Attempt {
+  actionHistory: ActionHistoryEntry[]
+  carePlans: CarePlan[]
   glucoseMeasurement: { at: number; value: number } | null
   neuroSigns: boolean
   nitrateRisk: boolean
@@ -91,11 +103,24 @@ export function createAttempt(caseId: CaseId, options: AttemptOptions = {}): Att
   const patient = { ...basePatient, ...c.initial }
   if (caseId === 'syncope') { patient.location = 'sink'; if (variant === 'brief') { patient.sbp = 85; patient.pulse = 68 } }
   if (caseId === 'anaphylaxis') patient.injectionRoute = options.route ?? pick<Route>(['subcutaneous', 'intramuscular', 'intravenous'])
-  return {
+  const attempt: Attempt = {
+    actionHistory: [], carePlans: [],
     glucoseMeasurement: null, neuroSigns: options.neuroSigns ?? false, nitrateRisk: options.nitrateRisk ?? false, captoprilRisk: options.captoprilRisk ?? false,
     adrenalineGivenAt: null, adrenalineRepeatDue: false, ecgAt: null, episodeStartedAt: 0,
-    id: globalThis.crypto.randomUUID(), caseId, episode: caseId, variant, mode: options.mode ?? 'training', speed: options.speed ?? 1, paused: false, phase: 'active', patient, completed: [], errors: [], temperatureMeasurement: null, events: [{ at: 0, text: c.cue, kind: 'patient' }], measurement: null, repeatMeasurement: null, baselineRead: false, doctorCalledAt: null, doctorArrived: false, teamCalledAt: null, teamArrived: false, firstCorrectAt: null, lastNitroAt: -1, nitroMinSbp: options.nitroMinSbp ?? null, nitroGivenAt: null, stableAt: null, positionedAt: null, arrestAt: null, chestSelected: false, compressions: 0, goodCompressions: 0, lastCompressionAt: null, cycleCompressions: 0, ventilations: 0, cprStartedAt: null, outcome: '', feedback: 'Эпизод начался. Для вызова помощи нажмите кнопку у кровати.',
+    id: globalThis.crypto.randomUUID(), caseId, episode: caseId, variant, mode: options.mode ?? 'training', speed: options.speed ?? 1, paused: false, phase: 'active', patient, completed: [], errors: [], temperatureMeasurement: null, events: [{ at: 0, text: c.cue, kind: 'patient' }], measurement: null, repeatMeasurement: null, baselineRead: false, doctorCalledAt: null, doctorArrived: false, teamCalledAt: null, teamArrived: false, firstCorrectAt: null, lastNitroAt: -1, nitroMinSbp: options.nitroMinSbp === undefined ? c.nitroMinSbp ?? null : options.nitroMinSbp, nitroGivenAt: null, stableAt: null, positionedAt: null, arrestAt: null, chestSelected: false, compressions: 0, goodCompressions: 0, lastCompressionAt: null, cycleCompressions: 0, ventilations: 0, cprStartedAt: null, outcome: '', feedback: 'Эпизод начался. Для вызова помощи нажмите кнопку у кровати.',
   }
+  return captureCarePlan(attempt)
+}
+/** Keep the indication when the condition later improves; retain earlier episode branches. */
+function captureCarePlan(a: Attempt): Attempt {
+  const tiers = clinicalTiers(a), last = a.carePlans.at(-1), resuscitation = a.arrestAt !== null
+  if (!last || last.episode !== a.episode || last.resuscitation !== resuscitation) {
+    a.carePlans = [...a.carePlans, { at: elapsed(a), episode: a.episode, resuscitation, tiers }]
+  } else {
+    const merged = tiers.map((tier, i) => [...new Set([...(last.tiers[i] ?? []), ...tier])].filter(id => !(id === 'withhold-nitro' && a.completed.includes('nitro'))))
+    if (JSON.stringify(merged) !== JSON.stringify(last.tiers)) a.carePlans = [...a.carePlans.slice(0, -1), { ...last, tiers: merged }]
+  }
+  return a
 }
 export const elapsed = (a: Attempt) => a.patient.secondsSinceOnset
 function log(a: Attempt, text: string, kind: Event['kind'] = 'system') { a.events.push({ at: elapsed(a), text, kind }) }
@@ -147,9 +172,10 @@ function maybeStable(a: Attempt) {
   a.patient.pulse = 92
   log(a, 'Учебная динамика: состояние стабилизируется. Повторите измерение и передайте данные врачу.')
 }
-function copy(a: Attempt): Attempt { return { ...a, patient: { ...a.patient }, completed: [...a.completed], errors: [...a.errors], events: [...a.events] } }
+function copy(a: Attempt): Attempt { return { ...a, patient: { ...a.patient }, completed: [...a.completed], errors: [...a.errors], events: [...a.events], actionHistory: [...a.actionHistory], carePlans: [...a.carePlans] } }
 function transitionToChest(a: Attempt) {
   a.episode = 'chest-pain'
+  a.nitroMinSbp ??= getCase('chest-pain').nitroMinSbp ?? null
   a.variant = 'persistent'
   a.episodeStartedAt = elapsed(a)
   a.patient.complaint = 'chestPain'
@@ -159,6 +185,10 @@ function transitionToChest(a: Attempt) {
   log(a, 'Новый симптом: давящая боль за грудиной. Перейдите к оценке боли в груди.', 'patient')
 }
 export function tickAttempt(previous: Attempt, deltaSec: number): Attempt {
+  const after = advanceAttempt(previous, deltaSec)
+  return after === previous ? previous : captureCarePlan(after)
+}
+function advanceAttempt(previous: Attempt, deltaSec: number): Attempt {
   if (previous.paused || !['active', 'arrest'].includes(previous.phase) || !Number.isFinite(deltaSec) || deltaSec <= 0) return previous
   const a = copy(previous)
   const before = elapsed(a)
@@ -224,6 +254,14 @@ export function tickAttempt(previous: Attempt, deltaSec: number): Attempt {
 }
 const drugs: ActionId[] = ['nitro', 'aspirin', 'captopril', 'adrenaline']
 export function performAction(previous: Attempt, action: ActionId, realNowMs = performance.now()): Attempt {
+  const after = applyAction(previous, action, realNowMs)
+  if (after === previous) return previous
+  const performed = after.events.slice(previous.events.length).some(event => event.kind === 'action') || after.compressions > previous.compressions || after.ventilations > previous.ventilations || (!previous.completed.includes(action) && after.completed.includes(action))
+  const issues = after.errors.filter((issue, index) => index >= previous.errors.length || (issue.action === action && after.feedback.includes(issue.why))).map(({ severity, why }) => ({ severity, why }))
+  after.actionHistory.push({ at: elapsed(previous), action, episode: previous.episode, performed, fulfilled: after.completed.filter(id => !previous.completed.includes(id)), feedback: after.feedback, issues })
+  return captureCarePlan(after)
+}
+function applyAction(previous: Attempt, action: ActionId, realNowMs: number): Attempt {
   if (!['active', 'arrest'].includes(previous.phase) || previous.paused) return previous
   const a = copy(previous)
   const p = a.patient

@@ -3,14 +3,16 @@ import PulseTrace from './PulseTrace'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Activity, X, ArrowLeft, Check } from 'lucide-react'
 import RoomScene, { type BlanketTransform, type PatientTransform } from './RoomScene'
-import { actionById, emergencyCases, getCase, objectLabels, stageTitles, type ActionId, type CaseId, type ObjectId } from './scenario'
-import { consciousnessLabels, elapsed, nextObject, patientCue, positionLabels, requiredActions, routeLabels, skinLabels, stageScores, type Attempt } from './simulation'
+import { actionById, emergencyCases, getCase, objectLabels, type ActionId, type CaseId, type ObjectId } from './scenario'
+import { consciousnessLabels, elapsed, nextObject, patientCue, positionLabels, requiredActions, routeLabels, skinLabels, type Attempt } from './simulation'
 import { useSimulationStore } from './store'
 import { placeActionPopover, type ScreenPoint } from './actionPopover'
 import SceneEditor from './SceneEditor'
 import DoctorDialog from './DoctorDialog'
+import ResultsPanel from './ResultsPanel'
 import { useSceneEditor } from './sceneEditorStore'
 import './App.css'
+import './ResultsPanel.css'
 
 const PATIENT_TRANSFORM_STORAGE_KEY = 'careflow-patient-transform-v3'
 const LEGACY_PATIENT_TRANSFORM_STORAGE_KEY = 'careflow-patient-transform-v2'
@@ -74,19 +76,18 @@ function readBlanketTransform(): BlanketTransform {
 }
 
 const time = (seconds: number | null) => seconds === null ? '—' : `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
-interface Summary { id: string; title: string; date: string; outcome: string; scores: number[]; doctorTime: number | null; firstTime: number | null; critical: number; errors: Attempt['errors']; events: Attempt['events']; mode: string }
+interface Summary { id: string; title: string; date: string; outcome: string; duration?: number; actions?: Attempt['actionHistory']; plans?: Attempt['carePlans']; errors: Attempt['errors']; events: Attempt['events']; mode: string }
 const HISTORY_KEY = 'careflow-emergency-attempts-v1'
 function readHistory(): Summary[] {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]')
-    return Array.isArray(stored) ? stored.filter((s): s is Summary => Boolean(s && typeof s.id === 'string' && typeof s.title === 'string' && Array.isArray(s.scores) && s.scores.length === 5 && s.scores.every((v: unknown) => typeof v === 'number') && Array.isArray(s.errors) && Array.isArray(s.events))).slice(0, 20) : []
+    return Array.isArray(stored) ? stored.filter((s): s is Summary => Boolean(s && typeof s.id === 'string' && typeof s.title === 'string' && Array.isArray(s.errors) && Array.isArray(s.events))).slice(0, 20) : []
   } catch { return [] }
 }
 function App() {
   const { attempt, start, act, tick, leave } = useSimulationStore()
   const [selectedCase, setSelectedCase] = useState<CaseId>('collapse')
   const [mode, setMode] = useState<'training' | 'exam'>('training')
-  const [nitroThreshold, setNitroThreshold] = useState('')
   const [selectedObject, setSelectedObject] = useState<ObjectId | null>(null)
   const [actionPoint, setActionPoint] = useState<[number, number, number] | null>(null)
   const actionPanelRef = useRef<HTMLElement>(null)
@@ -154,7 +155,7 @@ function App() {
     setSelectedObject(object)
   }
   const saveAttempt = useCallback((a: Attempt) => {
-    const summary: Summary = { id: a.id, title: getCase(a.caseId).title, date: new Date().toISOString(), outcome: a.outcome || 'Попытка прервана пользователем', scores: stageScores(a), doctorTime: a.doctorCalledAt, firstTime: a.firstCorrectAt, critical: a.errors.filter(e => e.severity === 'critical').length, errors: a.errors, events: a.events.slice(-180), mode: a.mode }
+    const summary: Summary = { id: a.id, title: getCase(a.caseId).title, date: new Date().toISOString(), outcome: a.outcome || 'Попытка прервана пользователем', duration: elapsed(a), actions: a.actionHistory, plans: a.carePlans, errors: a.errors, events: a.events.slice(-180), mode: a.mode }
     const next = [summary, ...(historyRef.current ?? []).filter(item => item.id !== a.id)].slice(0, 20)
     historyRef.current = next
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); setStorageError('') }
@@ -211,7 +212,7 @@ function App() {
   }, [heldItem])
   const begin = (id = selectedCase) => {
     if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt)
-    start(id, { mode, speed: 1, nitroMinSbp: nitroThreshold ? Number(nitroThreshold) : null })
+    start(id, { mode, speed: 1 })
     setSelectedObject(null); setAcknowledgedHint(null); setFirstPerson(false); setHeldItem('')
   }
   const backToMenu = () => { if (attempt && !['finished', 'failed'].includes(attempt.phase)) saveAttempt(attempt); unlock(); setFirstPerson(false); leave(); setSelectedObject(null) }
@@ -230,9 +231,7 @@ function App() {
   const required = attempt ? requiredActions(attempt) : []
   const hint = active && attempt?.mode === 'training' ? nextObject(attempt) : null
   const hintKey = `${attempt?.id}:${required.find(id => !attempt?.completed.includes(id)) ?? ''}`
-  const scores = attempt ? stageScores(attempt) : []
   const contextActions = actionMenu(attempt, selectedObject)
-  const showThreshold = selectedCase === 'chest-pain' || selectedCase === 'hypertension'
   return <main className={`app-shell emergency-app ${attempt?.phase === 'arrest' ? 'arrest-mode' : ''}`}>
     <section className="scene-wrap"><RoomScene
       covered={attempt?.completed.includes('blanket') ?? false} firstPerson={firstPerson && active && !editorOpen}
@@ -249,8 +248,8 @@ function App() {
     </header>}
     {!attempt && !editorOpen && <section className="scenario-picker glass-panel">
       <div className="case-grid">{emergencyCases.map((c, index) => <button key={c.id} className={`case-card ${selectedCase === c.id ? 'selected' : ''}`} onClick={() => setSelectedCase(c.id)} aria-pressed={selectedCase === c.id}><span className="case-number">0{index + 1}</span><strong>{c.title}</strong><span>{c.description}</span></button>)}</div>
-      <div className="setup-row"><div className="mode-picker" role="group" aria-label="Режим">{([{ id: 'training', title: 'Обучение', description: 'С подсказками' }, { id: 'exam', title: 'Экзамен', description: 'Без подсказок' }] as const).map(option => <button key={option.id} className={mode === option.id ? 'selected' : ''} aria-pressed={mode === option.id} onClick={() => setMode(option.id)}><strong>{option.title}</strong><span>{option.description}</span>{mode === option.id && <Check size={17}/>}</button>)}</div>{showThreshold && <label>Порог САД для нитро<input type="number" min="80" max="180" placeholder="Задаёт преподаватель" value={nitroThreshold} onChange={e => setNitroThreshold(e.target.value)} /><small>Без порога препарат недоступен</small></label>}</div>
-      <div className="picker-bottom"><button className="primary-button start-episode" onClick={() => begin()} disabled={Boolean(nitroThreshold && (!Number.isFinite(Number(nitroThreshold)) || Number(nitroThreshold) < 80 || Number(nitroThreshold) > 180))}><span>Начать эпизод</span> <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
+      <div className="setup-row"><div className="mode-picker" role="group" aria-label="Режим">{([{ id: 'training', title: 'Обучение', description: 'С подсказками' }, { id: 'exam', title: 'Экзамен', description: 'Без подсказок' }] as const).map(option => <button key={option.id} className={mode === option.id ? 'selected' : ''} aria-pressed={mode === option.id} onClick={() => setMode(option.id)}><strong>{option.title}</strong><span>{option.description}</span>{mode === option.id && <Check size={17}/>}</button>)}</div></div>
+      <div className="picker-bottom"><button className="primary-button start-episode" onClick={() => begin()}><span>Начать эпизод</span> <ArrowLeft size={18} style={{ transform: 'rotate(180deg)' }}/></button></div>
     </section>}
     {attempt && !editorOpen && <>
       {active && <>
@@ -263,7 +262,7 @@ function App() {
         {selectedObject && <section ref={actionPanelRef} className="action-panel glass-panel" aria-label={`Действия: ${objectLabels[selectedObject]}`}><div className="panel-heading"><div><span className="eyebrow">ВЗАИМОДЕЙСТВИЕ</span><h2>{objectLabels[selectedObject]}</h2></div><button className="icon-button" aria-label="Закрыть действия" onClick={() => setSelectedObject(null)}><X size={18}/></button></div>
           {selectedObject === 'tonometer' && attempt.episode === 'hypertension' && <p className="context-note">Контроль АД каждые 15 минут, при ухудшении — раньше. {attempt.measurement ? `Следующий плановый контроль: ${time(attempt.measurement.at + 900)}.` : 'Начните с измерения и сравнения с привычным давлением.'}</p>}
           {selectedObject === 'chart' && <div className="chart-data"><p>Температурный лист · учебные данные</p>{attempt.baselineRead ? <p>До эпизода: САД {attempt.patient.habitualSbp} мм рт. ст.; пульс 80/мин; T 37,0 °C.</p> : <p>Откройте исходную запись, чтобы сравнить показатели.</p>}{attempt.measurement && <p>Измерено в {time(attempt.measurement.at)}: САД {attempt.measurement.sbp}; пульс {attempt.measurement.pulse}.</p>}{attempt.repeatMeasurement && <p>Повторно в {time(attempt.repeatMeasurement.at)}: САД {attempt.repeatMeasurement.sbp}; пульс {attempt.repeatMeasurement.pulse}.</p>}{attempt.temperatureMeasurement && <p>Термометр в {time(attempt.temperatureMeasurement.at)}: {attempt.temperatureMeasurement.value.toFixed(1)} °C.</p>}{attempt.completed.includes('record') && <p><Check size={14}/> Наблюдения и журнал действий внесены в лист.</p>}</div>}
-          {(selectedObject === 'medications' || selectedObject === 'shock-kit') && <p className="context-note">{attempt.episode === 'anaphylaxis' ? 'Постоянный экстренный протокол: взрослому адреналин 0,5 мг в/м в наружную поверхность бедра. Не ждать назначения или прибытия врача; повтор через 5 минут при сохраняющихся ABC-нарушениях. Антигистаминный не заменяет адреналин.' : 'Сверяйте назначение, аллергии и противопоказания.'} {attempt.episode === 'chest-pain' && <>Нитрат: проверьте приём ФДЭ-5, противопоказания и свежее АД. {attempt.nitroMinSbp === null ? 'Порог САД не задан — воздержаться и обратиться к врачу.' : `Порог преподавателя ${attempt.nitroMinSbp} мм рт. ст., но не ниже 90; не более 3 доз; повтор не ранее 5 минут.`}</>}{attempt.episode === 'collapse' && 'Инфузия — по назначению; исключайте сепсис и кровопотерю. Жаропонижающее не устраняет шок.'}{attempt.episode === 'hypertension' && 'Оцените лицо, руки и речь. Проверьте противопоказания к каптоприлу; не снижайте АД резко без назначения.'}</p>}
+          {(selectedObject === 'medications' || selectedObject === 'shock-kit') && <p className="context-note">{attempt.episode === 'anaphylaxis' ? 'Постоянный экстренный протокол: взрослому адреналин 0,5 мг в/м в наружную поверхность бедра. Не ждать назначения или прибытия врача; повтор через 5 минут при сохраняющихся ABC-нарушениях. Антигистаминный не заменяет адреналин.' : 'Сверяйте назначение, аллергии и противопоказания.'} {attempt.episode === 'chest-pain' && <>Нитрат: проверьте приём ФДЭ-5, противопоказания и свежее АД. {attempt.nitroMinSbp === null ? 'Порог САД не задан — воздержаться и обратиться к врачу.' : `Порог назначения в кейсе ${attempt.nitroMinSbp} мм рт. ст., но не ниже 90; не более 3 доз; повтор не ранее 5 минут.`}</>}{attempt.episode === 'collapse' && 'Инфузия — по назначению; исключайте сепсис и кровопотерю. Жаропонижающее не устраняет шок.'}{attempt.episode === 'hypertension' && 'Оцените лицо, руки и речь. Проверьте противопоказания к каптоприлу; не снижайте АД резко без назначения.'}</p>}
           {selectedObject === 'injection' && <p className="context-note">Путь исходного препарата: {routeLabels[attempt.patient.injectionRoute]}. При внутривенном введении прекратите инфузию и сохраните доступ. Для других путей прекратите дальнейшее введение.</p>}
           {selectedObject === 'ecg-device' && <p className="context-note">{attempt.completed.includes('ecg') ? 'ЭКГ записана и готова к передаче врачу. Кривая монитора учебная и не заменяет диагностическую ЭКГ.' : attempt.completed.includes('attach-electrodes') ? 'Электроды наложены. Снимите запись и передайте врачу.' : 'Сначала наложите электроды, затем снимите ЭКГ.'}</p>}
           {selectedObject === 'cpr' && <p className="context-note">Одно нажатие — серия 30 компрессий: 100–120/мин, глубина 5–6 см, полное расправление грудной клетки, минимум пауз. Затем откройте дыхательные пути и выполните два вдоха мешком Амбу. Техника отрабатывается на манекене.</p>}
@@ -275,7 +274,7 @@ function App() {
         {firstPerson && <div className="navigation-help glass-panel">{navigationHint || (pointerLocked ? 'WASD · Shift — быстрее · E — взаимодействие · Esc — курсор' : 'Клик по палате — управление мышью')}</div>}
         {heldItem && <div className="held-item"><span/><strong>{heldItem}</strong></div>}
       </>}
-      {!active && <section className="results-panel glass-panel"><span className="eyebrow">РАЗБОР ПОПЫТКИ</span><h1>{attempt.phase === 'finished' ? 'Помощь передана' : 'Эпизод завершён'}</h1><p>{attempt.outcome}</p><div className="result-metrics"><div><strong>{time(attempt.doctorCalledAt)}</strong><span>до вызова врача</span></div><div><strong>{time(attempt.firstCorrectAt)}</strong><span>до первого верного действия</span></div><div><strong>{attempt.errors.filter(e => e.severity === 'critical').length}</strong><span>критических ошибок</span></div></div><div className="stage-scores">{scores.map((score, i) => <div key={i}><span>{i + 1}. {stageTitles[i]}</span><progress max={100} value={score}/><strong>{score}%</strong></div>)}</div><h3>Ошибки и решения</h3>{attempt.errors.length ? <ul className="error-list">{attempt.errors.map((error, i) => <li key={i} className={error.severity}><span>{time(error.at)} · {({ critical: 'Критическая', major: 'Существенная', minor: 'Незначительная' })[error.severity]}</span>{error.why}</li>)}</ul> : <p>Ошибок в выполненных действиях не зарегистрировано.</p>}<div className="result-buttons"><button className="primary-button" onClick={() => begin(attempt.caseId)}>Повторить эпизод</button><button className="secondary-button" onClick={backToMenu}>Выбрать другой</button></div></section>}
+      {!active && <ResultsPanel attempt={attempt} onRepeat={() => begin(attempt.caseId)} onMenu={backToMenu}/>}
     </>}
     {storageError && <p className="storage-error" role="status">{storageError}</p>}
     {active && !editorOpen && attempt && (attempt.doctorArrived || attempt.teamArrived) && <DoctorDialog key={attempt.id} attempt={attempt} onOpen={closeActions} onHandoff={() => doAction('handoff')}/>}

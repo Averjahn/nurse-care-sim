@@ -37,8 +37,11 @@ test('nitro requires a fresh measurement before each dose', () => {
   a = act(a, 'nitro')
   assert.equal(a.patient.nitroDoses, 1); assert.match(a.feedback, /заново измерить/)
 })
-test('nitro threshold is instructor-supplied and enforced', () => {
-  let a = act(called('chest-pain'), 'measure', 'drug-history', 'protocol', 'nitro')
+test('nitro uses the case prescription and still rejects a missing or unsafe threshold', () => {
+  const preset = act(called('chest-pain'), 'measure', 'drug-history', 'protocol', 'nitro')
+  assert.equal(preset.nitroMinSbp, 100)
+  assert.equal(preset.patient.nitroDoses, 1)
+  let a = act(called('chest-pain', { nitroMinSbp: null }), 'measure', 'drug-history', 'protocol', 'nitro')
   assert.equal(a.patient.nitroDoses, 0); assert.match(a.feedback, /не задан порог/)
   a = act(called('chest-pain', { nitroMinSbp: 140 }), 'measure', 'drug-history', 'protocol', 'nitro')
   assert.equal(a.patient.nitroDoses, 0); assert.equal(a.errors.at(-1).severity, 'critical')

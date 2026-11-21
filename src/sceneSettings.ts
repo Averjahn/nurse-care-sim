@@ -1,5 +1,5 @@
 import { migrateOxygenConcentrator, migrateRemovedCabinet } from './wardStorage.ts'
-import { COLLAPSE_LAYOUT, DEFAULT_HINT_COLOR, SCENE_PRESET_REVISION, applyScenePreset } from './scenePreset.ts'
+import { CAMERA_PRESET, COLLAPSE_LAYOUT, DEFAULT_HINT_COLOR, SCENE_PRESET_REVISION, applyScenePreset } from './scenePreset.ts'
 export type Vec3 = [number, number, number]
 export interface ObjectSettings { position?: Vec3; scale?: number; hintColor?: string; hintScale?: number }
 export interface SceneSettings {
@@ -14,7 +14,7 @@ export const SCENE_SETTINGS_KEY = 'careflow-scene-editor-v1'
 export const DEFAULT_SCENE_SETTINGS: SceneSettings = {
   version: 1, presetRevision: SCENE_PRESET_REVISION, objects: {}, hintColor: DEFAULT_HINT_COLOR,
   layouts: { collapse: structuredClone(COLLAPSE_LAYOUT) },
-  camera: { position: [5.4, 6.4, 3.8], target: [.15, 1.3, -2.1], fov: 36, eyeHeight: 3.4 },
+  camera: structuredClone(CAMERA_PRESET),
 }
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const finite = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max

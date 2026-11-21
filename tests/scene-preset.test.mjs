@@ -16,6 +16,7 @@ test('published preset uses one yellow and the supplied collapse settings', () =
 })
 test('preset clears individual colors across cases while preserving unrelated transforms', () => {
   const settings = structuredClone(DEFAULT_SCENE_SETTINGS)
+  settings.presetRevision = 0
   settings.objects.patient = { position: [0, 1, -2], hintColor: '#ffde38' }
   settings.layouts.abdomen = { bed: { position: [1, 2, 3], hintColor: '#ffdd00' } }
   settings.layouts.collapse.monitor.hintColor = '#ffdd00'
@@ -23,6 +24,26 @@ test('preset clears individual colors across cases while preserving unrelated tr
   for (const objects of [settings.objects, ...Object.values(settings.layouts)]) for (const value of Object.values(objects)) assert.equal(value.hintColor, undefined)
   assert.deepEqual(settings.layouts.abdomen.bed.position, [1, 2, 3])
   assert.deepEqual(settings.objects.patient.position, [0, 1, -2])
+})
+test('camera release upgrades revision 1 without resetting edited objects, colors or layouts, once', () => {
+  const previous = globalThis.localStorage
+  const saved = structuredClone(DEFAULT_SCENE_SETTINGS)
+  saved.presetRevision = 1
+  saved.camera = { position: [5.4, 6.4, 3.8], target: [.15, 1.3, -2.1], fov: 36, eyeHeight: 3.4 }
+  saved.objects.patient = { position: [1, 2, 3], hintColor: '#123456' }
+  saved.layouts.collapse.monitor = { position: [2, 3, 4] }
+  const values = new Map([[SCENE_SETTINGS_KEY, JSON.stringify(saved)]])
+  globalThis.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) }
+  try {
+    const upgraded = readSceneSettings()
+    assert.deepEqual(upgraded.camera.position, [5.02, 6.37, 3.8])
+    assert.deepEqual(upgraded.camera.target, [1.09, 2.12, -2.1])
+    assert.deepEqual(upgraded.objects, saved.objects)
+    assert.deepEqual(upgraded.layouts, saved.layouts)
+    upgraded.camera.position = [4, 5, 6]
+    values.set(SCENE_SETTINGS_KEY, JSON.stringify(upgraded))
+    assert.deepEqual(readSceneSettings().camera.position, [4, 5, 6])
+  } finally { globalThis.localStorage = previous }
 })
 test('saved configurations get the preset once, then preserve subsequent editor changes', () => {
   const previous = globalThis.localStorage

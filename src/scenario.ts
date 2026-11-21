@@ -69,11 +69,12 @@ export interface EmergencyCase {
   description: string
   cue: string
   initial: Partial<PatientState>
+  nitroMinSbp?: number
 }
 export const emergencyCases: EmergencyCase[] = [
   { id: 'collapse', title: 'Лихорадка → коллапс', description: 'После периода жара температура резко падает. Слабость и холодный пот.', cue: 'Жар прошёл… Но мне вдруг очень холодно. Темнеет в глазах.', initial: { tempC: 39.2, sbp: 85, pulse: 118, complaint: 'weakDizzy', skin: 'coldSweat' } },
   { id: 'hypertension', title: 'Гипертонический криз', description: 'Тревожная новость, головная боль и нарушение зрения. Сравните АД с привычным.', cue: 'Голова раскалывается… Перед глазами мушки, в ушах шумит.', initial: { sbp: 200, pulse: 106, complaint: 'headacheVision', skin: 'flushed' } },
-  { id: 'chest-pain', title: 'Боль в груди', description: 'Давление за грудиной. Нужны оценка, ЭКГ и наблюдение за ответом на помощь.', cue: 'Давит в груди, отдаёт в левую руку. Мне страшно…', initial: { sbp: 135, pulse: 102, complaint: 'chestPain', skin: 'pale' } },
+  { id: 'chest-pain', title: 'Боль в груди', description: 'Давление за грудиной. Нужны оценка, ЭКГ и наблюдение за ответом на помощь.', cue: 'Давит в груди, отдаёт в левую руку. Мне страшно…', initial: { sbp: 135, pulse: 102, complaint: 'chestPain', skin: 'pale' }, nitroMinSbp: 100 },
   { id: 'syncope', title: 'Обморок или коллапс?', description: 'У умывальника пациентке стало плохо. Проследите за восстановлением сознания.', cue: 'В ушах звенит… Кажется, я сейчас упаду.', initial: { sbp: 88, pulse: 108, complaint: 'weakDizzy', skin: 'pale', position: 'sitting', consciousness: 'dim' } },
   { id: 'anaphylaxis', title: 'Реакция после инъекции', description: 'После введения лекарства появились зуд, сыпь и затруднение дыхания.', cue: 'Всё чешется… Тяжело дышать. Что со мной?', initial: { sbp: 82, pulse: 124, spo2: 86, complaint: 'itchBreath', skin: 'rash' } },
   { id: 'abdomen', title: 'Острая боль в животе', description: 'Причина боли неизвестна. Решите, какие вмешательства нужно исключить.', cue: 'Очень сильно болит живот. Может, приложить что-нибудь тёплое?', initial: { sbp: 110, pulse: 104, complaint: 'abdomenPain', skin: 'pale' } },
@@ -84,7 +85,7 @@ export const getCase = (id: CaseId) => emergencyCases.find(item => item.id === i
 const nitro = actionById('nitro')
 nitro.forbidden = [
   { when: a => a.patient.nitroDoses >= 3, severity: 'critical', why: 'Превышено ограничение учебного назначения: не более трёх доз.' },
-  { when: a => a.nitroMinSbp !== null && a.patient.sbp < a.nitroMinSbp, severity: 'critical', why: 'Давление ниже порога, указанного преподавателем в учебном назначении.' },
+  { when: a => a.nitroMinSbp !== null && a.patient.sbp < a.nitroMinSbp, severity: 'critical', why: 'Давление ниже порога, заданного в назначении этого кейса.' },
   { when: a => !a.measurement || a.measurement.at <= a.lastNitroAt, severity: 'major', why: 'Перед каждой дозой нужно заново измерить давление и пульс.' },
 ]
 nitro.when = a => a.episode === 'chest-pain' && a.nitroMinSbp !== null

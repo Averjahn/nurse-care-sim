@@ -75,7 +75,8 @@ test('reference retains indicated oxygen after saturation improves and covers ev
   collapse.patient.spo2 = 90
   collapse = tickAttempt(collapse, 1)
   collapse = act(collapse, 'call-doctor','inspect','legs-up','measure','saturation','oxygen')
-  assert.equal(collapse.patient.spo2, 97)
+  collapse = tickAttempt(collapse, 12)
+  assert.equal(collapse.patient.spo2, 96)
   assert.ok(!requiredActions(collapse).includes('oxygen'))
   assert.ok(referenceSteps(collapse).flatMap(p => p.tiers.flat()).some(s => s.id === 'oxygen' && s.done), 'resolved indication remains in the reference history')
 })
